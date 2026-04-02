@@ -24,7 +24,6 @@ rand = "0.8"
 SQLX_OFFLINE = "true"
 DATABASE_URL = "sqlite://./db/consult_ops.db"
 
-
 [lib]
 name = "backend"
 path = "src/lib.rs"

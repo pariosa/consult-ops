@@ -8,13 +8,16 @@
 </template>
 
 <script setup lang="ts">
-import { defineProps } from 'vue'
-import { format_currency } from '~/utils/helpers'
-
-defineProps<{ invoice: any }>()
-const formatCurrency = (amount: number) => `$${amount.toFixed(2)}`
+defineProps<{ invoice: any }>();
+const formatCurrency = (amount: number) => `$${amount.toFixed(2)}`;
 </script>
 
 <style scoped>
-.card { border:1px solid #ccc; border-radius:8px; padding:1rem; margin:0.5rem 0; background:#fdfdfd; }
+.card {
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 0.5rem 0;
+  background: #fdfdfd;
+}
 </style>
