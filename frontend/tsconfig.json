@@ -6,7 +6,8 @@
     "strict": true,
     "jsx": "preserve",
     "esModuleInterop": true,
-    "types": ["@types/node", "@nuxt/types"]
+    "types": ["@types/node"]
   },
+  "extends": "./.nuxt/tsconfig.json",
   "exclude": ["node_modules", ".nuxt", "dist"]
 }

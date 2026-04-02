@@ -4,7 +4,7 @@ import { defineNuxtConfig } from 'nuxt/config'
 export default defineNuxtConfig({
   ssr: false,
   css: [],
-  modules: [],
+  modules: ['@nuxtjs/storybook'],
   build: {},
   compatibilityDate: '2026-04-01',
 })

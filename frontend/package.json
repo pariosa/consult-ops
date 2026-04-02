@@ -8,25 +8,38 @@
     "start": "nuxt start",
     "lint": "eslint --ext .ts,.vue,.js .",
     "lint:fix": "eslint --fix --ext .ts,.vue,.js .",
-    "precommit": "npm run lint"
+    "precommit": "npm run lint",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
   },
   "dependencies": {
-    "nuxt": "^3.7.3",
-    "vue3-apexcharts": "^1.8.0",
-    "apexcharts": "5.3.6",
+    "apexcharts": "5.10.0",
     "axios": "^1.6.1",
-    "pinia": "^3.0.4"
+    "nuxt": "^3.7.3",
+    "pinia": "^3.0.4",
+    "unstorage": "^1.17.5",
+    "vue3-apexcharts": "^1.8.0"
   },
   "devDependencies": {
-    "@typescript-eslint/eslint-plugin": "^6.2.0",
-    "@typescript-eslint/parser": "^6.2.0",
-    "eslint": "^10.0.3",
-    "eslint-config-prettier": "^9.1.0",
-    "eslint-plugin-vue": "^9.26.0",
-    "prettier": "^3.3.0",
-    "typescript": "^5.2.2",
-    "unplugin-vue-components": "^32.0.0",
-    "unplugin-auto-import": "^0.18.0"
+    "@chromatic-com/storybook": "^3.2.7",
+    "@storybook/addon-essentials": "^8.6.18",
+    "@storybook/addon-interactions": "^8.6.18",
+    "@storybook/addon-links": "^8.6.18",
+    "@storybook/builder-vite": "^8.6.18",
+    "@storybook/vue3": "^8.6.18",
+    "@storybook/vue3-vite": "^8.6.18",
+    "@types/node": "^25.5.0",
+    "@typescript-eslint/eslint-plugin": "6.21.0",
+    "@typescript-eslint/parser": "6.21.0",
+    "@vitejs/plugin-vue": "^6.0.5",
+    "eslint": "8.57.1",
+    "eslint-config-prettier": "9.1.0",
+    "eslint-plugin-vue": "9.26.0",
+    "prettier": "3.3.0",
+    "storybook": "^8.6.18",
+    "typescript": "5.2.2",
+    "unplugin-auto-import": "0.18.0",
+    "unplugin-vue-components": "0.25.2"
   },
   "engines": {
     "node": ">=20.0.0",

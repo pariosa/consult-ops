@@ -1,7 +1,20 @@
 {
   "root": true,
-  "env": { "browser": true, "es2021": true },
-  "extends": ["eslint:recommended", "plugin:vue/vue3-recommended", "prettier"],
-  "plugins": ["vue"],
-  "rules": { "no-console": "warn", "vue/multi-word-component-names": "off" }
+  "env": {
+    "browser": true,
+    "es2021": true
+  },
+  "extends": [
+    "eslint:recommended",
+    "plugin:vue/vue3-recommended",
+    "prettier",
+    "plugin:storybook/recommended"
+  ],
+  "plugins": [
+    "vue"
+  ],
+  "rules": {
+    "no-console": "warn",
+    "vue/multi-word-component-names": "off"
+  }
 }
