@@ -1,0 +1,54 @@
+# Docker / local scripts
+docker-compose.override.yml
+*.docker
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# ========================
+# Frontend: Nuxt3 + Node
+# ========================
+/frontend/node_modules/
+/frontend/.nuxt/
+/frontend/dist/
+/frontend/package-lock.json
+/frontend/.npm/
+/frontend/.nyc_output/
+# ESLint/Prettier cache
+/frontend/.eslintcache
+/frontend/.tsbuildinfo
+
+# Env / secrets
+/frontend/.env
+/frontend/.env.local
+/frontend/.env.*.local
+
+# Storybook builds
+/frontend/storybook-static/
+
+# ========================
+# Backend: Rust
+# ========================
+/backend/target/
+/backend/**/*.rs.bk
+/backend/.env
+/backend/.env.local
+/backend/.env.*.local
+
+# ========================
+# IDEs / Editors
+# ========================
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# ========================
+# Other generated files
+# ========================
+*.pem
+*.key
