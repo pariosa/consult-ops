@@ -1,5 +1,5 @@
-use actix_web::{web, HttpResponse};
-use crate::models::{Project, Client, Contract, Invoice, Payment};
+use crate::models::{Client, Contract, Invoice, Payment, Project};
+use actix_web::{HttpResponse, web};
 use rusqlite::Connection;
 
 pub async fn get_projects(db: web::Data<Conn>) -> impl Responder {

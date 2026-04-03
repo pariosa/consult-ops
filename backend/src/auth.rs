@@ -1,12 +1,12 @@
 // src/auth.rs
-use actix_web::{web, HttpResponse, Responder};
-use sqlx::SqlitePool;
-use serde::{Deserialize, Serialize};
-use rand::rngs::OsRng;
+use actix_web::{HttpResponse, Responder, web};
 use argon2::{
     Argon2,
-    password_hash::{PasswordHasher, PasswordVerifier, PasswordHash, SaltString},
+    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
 };
+use rand::rngs::OsRng;
+use serde::{Deserialize, Serialize};
+use sqlx::SqlitePool;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthInfo {
@@ -15,10 +15,7 @@ pub struct AuthInfo {
 }
 
 // REGISTER
-pub async fn register(
-    pool: web::Data<SqlitePool>,
-    info: web::Json<AuthInfo>,
-) -> impl Responder {
+pub async fn register(pool: web::Data<SqlitePool>, info: web::Json<AuthInfo>) -> impl Responder {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
 
@@ -42,10 +39,7 @@ pub async fn register(
 }
 
 // LOGIN
-pub async fn login(
-    pool: web::Data<SqlitePool>,
-    info: web::Json<AuthInfo>,
-) -> impl Responder {
+pub async fn login(pool: web::Data<SqlitePool>, info: web::Json<AuthInfo>) -> impl Responder {
     let rec = sqlx::query!(
         r#"SELECT password_hash FROM users WHERE email = ?"#,
         info.email
@@ -64,7 +58,10 @@ pub async fn login(
     };
 
     let argon2 = Argon2::default();
-    if argon2.verify_password(info.password.as_bytes(), &parsed_hash).is_ok() {
+    if argon2
+        .verify_password(info.password.as_bytes(), &parsed_hash)
+        .is_ok()
+    {
         HttpResponse::Ok().body("Login successful")
     } else {
         HttpResponse::Unauthorized().body("Invalid email or password")

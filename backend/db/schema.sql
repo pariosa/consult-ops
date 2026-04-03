@@ -3,7 +3,16 @@ CREATE TABLE clients (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
-    phone TEXT
+    tax_id TEXT,
+    phone TEXT,
+    company_name TEXT,
+    address TEXT,
+    city TEXT,
+    state TEXT,
+    zip TEXT,
+    country TEXT,
+    created_at TEXT,
+    updated_at TEXT
 );
 
 -- projects table
@@ -12,15 +21,34 @@ CREATE TABLE projects (
     client_id INTEGER NOT NULL,
     name TEXT NOT NULL,
     start_date TEXT,
+    description TEXT,
+    end_date TEXT,
+    created_at TEXT,
+    updated_at TEXT,
     FOREIGN KEY(client_id) REFERENCES clients(id)
 );
 
 -- contracts table
-CREATE TABLE contracts (
+CREATE TABLE contracts ( 
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id INTEGER NOT NULL,
+
+    title TEXT NOT NULL,
+    status TEXT NOT NULL,
+
     signed_at TEXT,
-    details TEXT,
+    start_date TEXT,
+    end_date TEXT,
+
+    value REAL,
+    currency TEXT,
+
+    terms TEXT,
+    notes TEXT,
+
+    external_id TEXT,
+
+    created_at TEXT NOT NULL,
     FOREIGN KEY(project_id) REFERENCES projects(id)
 );
 
@@ -28,8 +56,21 @@ CREATE TABLE contracts (
 CREATE TABLE invoices (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     contract_id INTEGER NOT NULL,
+
+    invoice_number TEXT NOT NULL,
+    status TEXT NOT NULL,
+
+    issued_at TEXT,
     due_date TEXT,
-    amount REAL,
+
+    subtotal REAL,
+    tax REAL,
+    total REAL,
+
+    currency TEXT,
+    notes TEXT,
+
+    created_at TEXT NOT NULL,
     FOREIGN KEY(contract_id) REFERENCES contracts(id)
 );
 
@@ -38,7 +79,12 @@ CREATE TABLE payments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     invoice_id INTEGER NOT NULL,
     paid_at TEXT,
-    amount REAL,
+    amount REAL NOT NULL,
+    currency TEXT,
+    method TEXT,
+    reference TEXT,
+    notes TEXT,
+    created_at TEXT NOT NULL,
     FOREIGN KEY(invoice_id) REFERENCES invoices(id)
 );
 

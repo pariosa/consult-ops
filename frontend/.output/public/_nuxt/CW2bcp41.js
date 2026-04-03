@@ -1,0 +1,1 @@
+import{d as t,A as n,B as o,C as e,R as l,_ as r}from"./BFFAWKXo.js";const d=t({__name:"default",setup(u){return(s,a)=>(n(),o("div",null,[a[0]||(a[0]=e("header",{class:"header"},[e("h1",null,"Consultant Ops")],-1)),e("main",null,[l(s.$slots,"default",{},void 0)])]))}}),p=r(d,[["__scopeId","data-v-731f9153"]]);export{p as default};
