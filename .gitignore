@@ -18,6 +18,7 @@ Thumbs.db
 /frontend/package-lock.json
 /frontend/.npm/
 /frontend/.nyc_output/
+/frontend/.output/
 # ESLint/Prettier cache
 /frontend/.eslintcache
 /frontend/.tsbuildinfo
