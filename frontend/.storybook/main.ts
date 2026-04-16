@@ -1,4 +1,6 @@
 import { mergeConfig } from 'vite';
+import vue from '@vitejs/plugin-vue';
+
 export default {
   stories: ['../components/**/*.stories.@(js|ts|vue)'],
 
@@ -6,7 +8,7 @@ export default {
     '@storybook/addon-links',
     '@storybook/addon-essentials',
     '@storybook/addon-interactions',
-    '@chromatic-com/storybook'
+    '@chromatic-com/storybook',
   ],
 
   framework: {
@@ -15,17 +17,18 @@ export default {
   },
 
   core: {
-    builder: '@storybook/builder-vite'
+    builder: '@storybook/builder-vite',
   },
 
   viteFinal: async (config: any) => {
-    // register the Vue plugin for Storybook
     return mergeConfig(config, {
-      plugins: [require('@vitejs/plugin-vue')()],
+      plugins: [
+        vue(), // ✅ important: proper Vue SFC compiler
+      ],
     });
   },
 
   docs: {
-    autodocs: true
-  }
+    autodocs: true,
+  },
 };

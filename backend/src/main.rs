@@ -12,6 +12,7 @@ use std::env;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    dotenv::dotenv().ok();
     // Initialize DB pool
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set in .env");
     let db = Db::new(&database_url)
