@@ -1,5 +1,5 @@
-import LoginForm from './LoginForm.vue';
 import type { Meta, StoryFn } from '@storybook-vue/nuxt';
+import LoginForm from './LoginForm.vue';
 
 const meta: Meta<typeof LoginForm> = {
   title: 'Components/LoginForm',
@@ -9,7 +9,9 @@ export default meta;
 
 const Template: StoryFn<typeof LoginForm> = (args) => ({
   components: { LoginForm },
-  setup() { return { args }; },
+  setup() {
+    return { args };
+  },
   template: '<LoginForm v-bind="args" />',
 });
 
