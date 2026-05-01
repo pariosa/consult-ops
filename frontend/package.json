@@ -17,7 +17,7 @@
     "@storybook/addon-interactions": "^8.6.18",
     "apexcharts": "5.10.0",
     "axios": "^1.6.1",
-    "nuxt": "3.15.4",
+    "nuxt": "3.19.0",
     "pinia": "^3.0.4",
     "unstorage": "^1.17.5",
     "vue3-apexcharts": "^1.8.0"
