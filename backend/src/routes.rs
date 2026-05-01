@@ -1,4 +1,4 @@
-use crate::auth::{login, register};
+use crate::auth::{forgot_password, login, register, reset_password};
 use crate::handlers::{
     create_client, create_contract, create_invoice, create_payment, create_project, get_clients,
     get_contracts, get_invoices, get_payments, get_projects,
@@ -11,6 +11,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             // Auth
             .route("/auth/register", web::post().to(register))
             .route("/auth/login", web::post().to(login))
+            .route("/auth/forgot-password", web::post().to(forgot_password))
+            .route("/auth/reset-password", web::post().to(reset_password))
             // Clients
             .route("/clients", web::get().to(get_clients))
             .route("/clients", web::post().to(create_client))

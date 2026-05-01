@@ -1,4 +1,4 @@
 # .cargo/config.toml
 [env]
-SQLX_OFFLINE = "true"
-DATABASE_URL = "sqlite://./db/consult-ops.db"
+SQLX_OFFLINE = "false"
+DATABASE_URL = "sqlite://./db/consult_ops.db"

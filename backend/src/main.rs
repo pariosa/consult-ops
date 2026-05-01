@@ -15,6 +15,8 @@ async fn main() -> std::io::Result<()> {
     dotenv::dotenv().ok();
     // Initialize DB pool
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set in .env");
+    println!("DATABASE_URL={}", database_url);
+    println!("CWD={:?}", std::env::current_dir().unwrap());
     let db = Db::new(&database_url)
         .await
         .expect("Failed to connect to DB");

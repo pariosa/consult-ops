@@ -23,7 +23,11 @@ impl Db {
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL
+            password_hash TEXT NOT NULL,
+            name TEXT,
+            user_type TEXT NOT NULL DEFAULT 'contractor',
+            created_at TEXT,
+            updated_at TEXT
         );
 
         CREATE TABLE IF NOT EXISTS clients (
@@ -101,6 +105,16 @@ impl Db {
             created_at TEXT NOT NULL,
             updated_at TEXT,
             FOREIGN KEY(invoice_id) REFERENCES invoices(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            token_hash TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            used_at TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id)
         );
         "#;
 
