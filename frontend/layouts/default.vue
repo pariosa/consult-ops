@@ -1,28 +1,33 @@
 <template>
-  <div>
-    <header class="header">
-      <h1>Consultant Ops</h1>
-      <!-- <button @click="toggleTheme">Toggle Theme</button> -->
-    </header>
-    <main>
+  <div class="app-shell">
+    <AppHeader />
+    <main class="page-shell">
       <slot />
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
-// import { toggleTheme } from '~/composables/useTheme'
+import AppHeader from '~/components/AppHeader.vue';
 </script>
 
 <style scoped>
-.header {
-  display: flex;
-  justify-content: space-between;
-  padding: 1rem;
-  background: var(--accent-color);
-  color: white;
+.app-shell {
+  min-height: 100vh;
+  background: radial-gradient(
+      circle at top left,
+      rgba(37, 99, 235, 0.24),
+      transparent 28rem
+    ),
+    radial-gradient(
+      circle at top right,
+      rgba(16, 185, 129, 0.18),
+      transparent 26rem
+    ),
+    #050b14;
 }
-main {
-  padding: 2rem;
+
+.page-shell {
+  padding: 3rem 2rem;
 }
 </style>
