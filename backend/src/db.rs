@@ -25,9 +25,28 @@ impl Db {
             email TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
             name TEXT,
-            user_type TEXT NOT NULL DEFAULT 'contractor',
+            user_type TEXT NOT NULL DEFAULT 'consultant',
             created_at TEXT,
             updated_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS organizations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            created_at TEXT,
+            updated_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS organization_members (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            role TEXT NOT NULL DEFAULT 'viewer',
+            created_at TEXT,
+            updated_at TEXT,
+            FOREIGN KEY(organization_id) REFERENCES organizations(id),
+            FOREIGN KEY(user_id) REFERENCES users(id),
+            UNIQUE(organization_id, user_id)
         );
 
         CREATE TABLE IF NOT EXISTS clients (
@@ -37,6 +56,7 @@ impl Db {
             tax_id TEXT,
             phone TEXT,
             company_name TEXT,
+            organization_id INTEGER NOT NULL,
             address TEXT,
             city TEXT,
             state TEXT,
@@ -51,6 +71,7 @@ impl Db {
             client_id INTEGER NOT NULL,
             name TEXT NOT NULL,
             start_date TEXT,
+            organization_id INTEGER NOT NULL,
             end_date TEXT,
             description TEXT,
             created_at TEXT,
@@ -67,6 +88,7 @@ impl Db {
             start_date TEXT,
             end_date TEXT,
             value REAL,
+            organization_id INTEGER NOT NULL,
             currency TEXT,
             terms TEXT,
             notes TEXT,
@@ -85,6 +107,7 @@ impl Db {
             due_date TEXT,
             subtotal REAL,
             tax REAL,
+            organization_id INTEGER NOT NULL,
             total REAL,
             currency TEXT,
             notes TEXT,
@@ -99,6 +122,7 @@ impl Db {
             paid_at TEXT,
             amount REAL NOT NULL,
             currency TEXT,
+            organization_id INTEGER NOT NULL,
             method TEXT,
             reference TEXT,
             notes TEXT,

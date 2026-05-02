@@ -2,7 +2,7 @@
 import { navigateTo } from 'nuxt/app';
 import { ref } from 'vue';
 import LoginForm from '~/components/LoginForm.vue';
-
+import { getPortalRoute } from '~/utils/authRedirect';
 const error = ref('');
 
 const login = async (payload: {
@@ -24,30 +24,35 @@ const login = async (payload: {
   }
 
   const data = await res.json();
+
   localStorage.setItem(
     'auth_user',
-    JSON.stringify({ ...data, portal: payload.userType }),
+    JSON.stringify({
+      ...data.user,
+      token: data.token,
+      portal: data.user.user_type || payload.userType,
+    }),
   );
 
-  await navigateTo('/demo-dashboard');
+  await navigateTo(getPortalRoute(data.user.user_type || payload.userType));
 };
 </script>
 
 <template>
   <section class="auth-page">
     <div class="copy">
-      <p class="eyebrow">Client Portal</p>
-      <h1>Give clients a clean view into project progress.</h1>
+      <p class="eyebrow">Administrator Login</p>
+      <h1>Access administrator tools.</h1>
       <p>
-        Clients can review project status, contract details, invoices, and
-        payment history without needing internal access.
+        Admins can manage orginzational level scope, assign users to
+        organizations and give access rights to clients and consultants.
       </p>
     </div>
 
     <div>
       <LoginForm
         user-type="admin"
-        submit-text="Open Client Portal"
+        submit-text="Open Admin Portal"
         @submit="login"
       >
         <template #extra>

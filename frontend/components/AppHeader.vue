@@ -9,6 +9,7 @@
     </NuxtLink>
 
     <nav>
+      <NuxtLink to="/register">Register</NuxtLink>
       <NuxtLink to="/consultant-login">Consultant Login</NuxtLink>
       <NuxtLink to="/client-login">Client Login</NuxtLink>
       <NuxtLink to="/admin-login">Admin</NuxtLink>

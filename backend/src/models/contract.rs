@@ -5,6 +5,7 @@ use sqlx::{FromRow, Result as SqlxResult};
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
 pub struct Contract {
     pub id: i64,
+    pub organization_id: i64,
     pub project_id: i64,
 
     pub title: String,
@@ -26,6 +27,29 @@ pub struct Contract {
     pub created_at: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+pub struct CreateContract {
+    pub organization_id: i64,
+    pub project_id: i64,
+
+    pub title: String,
+
+    pub status: String, // draft | active | completed | cancelled
+
+    pub signed_at: Option<String>,
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
+
+    pub value: Option<f64>,
+    pub currency: Option<String>,
+
+    pub terms: Option<String>,
+    pub notes: Option<String>,
+
+    pub external_id: Option<String>,
+
+    pub created_at: String,
+}
 impl Contract {
     pub async fn all(db: &Db) -> SqlxResult<Vec<Self>> {
         sqlx::query_as::<_, Contract>("SELECT * FROM contracts ORDER BY created_at DESC")
@@ -33,10 +57,11 @@ impl Contract {
             .await
     }
 
-    pub async fn create(db: &Db, contract: Contract) -> SqlxResult<Self> {
+    pub async fn create(db: &Db, contract: CreateContract) -> SqlxResult<Self> {
         let rec = sqlx::query(
             r#"
             INSERT INTO contracts (
+                organization_id,
                 project_id,
                 title,
                 status,
@@ -50,9 +75,10 @@ impl Contract {
                 external_id,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
             "#,
         )
+        .bind(contract.organization_id)
         .bind(contract.project_id)
         .bind(&contract.title)
         .bind(&contract.status)
@@ -70,7 +96,19 @@ impl Contract {
 
         Ok(Contract {
             id: rec.last_insert_rowid(),
-            ..contract
+            organization_id: contract.organization_id,
+            project_id: contract.project_id,
+            title: contract.title,
+            status: contract.status,
+            signed_at: contract.signed_at,
+            start_date: contract.start_date,
+            end_date: contract.end_date,
+            value: contract.value,
+            currency: contract.currency,
+            terms: contract.terms,
+            notes: contract.notes,
+            external_id: contract.external_id,
+            created_at: contract.created_at,
         })
     }
 }

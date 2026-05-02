@@ -1,15 +1,33 @@
 use actix_web::{App, test, web};
 use backend::db::Db;
 use backend::handlers::{
-    create_client, create_contract, create_invoice, create_payment, create_project, get_clients,
-    get_contracts, get_invoices, get_payments, get_projects,
+    create_client, create_contract, create_invoice, create_payment, create_project, create_user,
+    get_clients, get_contracts, get_invoices, get_payments, get_projects,
 };
 use chrono::Utc;
 use serde_json::json;
 
+async fn seed_test_org(db: &Db) -> i64 {
+    let rec = sqlx::query(
+        r#"
+        INSERT INTO organizations (name, created_at, updated_at)
+        VALUES (?, ?, ?)
+        "#,
+    )
+    .bind("Test Organization")
+    .bind(Utc::now().to_rfc3339())
+    .bind(Utc::now().to_rfc3339())
+    .execute(&*db.pool)
+    .await
+    .expect("Failed to seed test organization");
+
+    rec.last_insert_rowid()
+}
+
 #[actix_web::test]
 async fn test_client_endpoints() {
     let db = Db::new(":memory:").await.expect("Failed to create test DB");
+    let organization_id = seed_test_org(&db).await;
 
     let app = test::init_service(
         App::new()
@@ -21,6 +39,7 @@ async fn test_client_endpoints() {
 
     // Create client
     let payload = json!({
+        "organization_id": organization_id,
         "name": "Test Client",
         "email": "client@test.com",
         "phone": "555-1234"
@@ -30,23 +49,42 @@ async fn test_client_endpoints() {
         .set_json(&payload)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let status = resp.status();
+    let body = test::read_body(resp).await;
+    let body_text = String::from_utf8_lossy(&body);
+
+    assert!(
+        status.is_success(),
+        "Expected success but got {}: {}",
+        status,
+        body_text
+    );
 
     // Get clients
     let req = test::TestRequest::get().uri("/api/clients").to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let status = resp.status();
+    let body = test::read_body(resp).await;
+    let body_text = String::from_utf8_lossy(&body);
+
+    assert!(
+        status.is_success(),
+        "Expected success but got {}: {}",
+        status,
+        body_text
+    );
 }
 
 #[actix_web::test]
 async fn test_project_endpoints() {
     let db = Db::new(":memory:").await.expect("Failed to create test DB");
+    let organization_id = seed_test_org(&db).await;
 
     // Seed client
     let client = backend::models::client::Client::create(
         &db,
-        backend::models::client::Client {
-            id: 0,
+        backend::models::client::CreateClient {
+            organization_id: organization_id,
             name: "Demo Client".to_string(),
             email: "demo@example.com".to_string(),
             company_name: None,
@@ -57,8 +95,6 @@ async fn test_project_endpoints() {
             zip: None,
             tax_id: None,
             address: None,
-            created_at: Some(Utc::now().to_rfc3339()),
-            updated_at: Some(Utc::now().to_rfc3339()),
         },
     )
     .await
@@ -73,6 +109,7 @@ async fn test_project_endpoints() {
     .await;
 
     let payload = json!({
+        "organization_id": organization_id,
         "client_id": client.id,
         "name": "Test Project",
         "start_date": Utc::now().to_rfc3339()
@@ -93,12 +130,13 @@ async fn test_project_endpoints() {
 #[actix_web::test]
 async fn test_contract_endpoints() {
     let db = Db::new(":memory:").await.expect("Failed to create test DB");
+    let organization_id = seed_test_org(&db).await;
 
     // Seed client & project
     let client = backend::models::client::Client::create(
         &db,
-        backend::models::client::Client {
-            id: 0,
+        backend::models::client::CreateClient {
+            organization_id: organization_id,
             name: "Demo Client".to_string(),
             email: "demo@example.com".to_string(),
             company_name: None,
@@ -109,8 +147,6 @@ async fn test_contract_endpoints() {
             zip: None,
             tax_id: None,
             address: None,
-            created_at: Some(Utc::now().to_rfc3339()),
-            updated_at: Some(Utc::now().to_rfc3339()),
         },
     )
     .await
@@ -119,6 +155,7 @@ async fn test_contract_endpoints() {
     let project = backend::models::project::Project::create(
         &db,
         backend::models::project::CreateProject {
+            organization_id: organization_id,
             client_id: client.id,
             name: "Contract Project".to_string(),
             start_date: Some(Utc::now().to_rfc3339()),
@@ -138,6 +175,7 @@ async fn test_contract_endpoints() {
     .await;
 
     let payload = json!({
+        "organization_id": organization_id,
         "project_id": project.id,
         "title": "Test Contract",
         "status": "active",
@@ -157,22 +195,40 @@ async fn test_contract_endpoints() {
         .set_json(&payload)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let status = resp.status();
+    let body = test::read_body(resp).await;
+    let body_text = String::from_utf8_lossy(&body);
 
+    assert!(
+        status.is_success(),
+        "Expected success but got {}: {}",
+        status,
+        body_text
+    );
     let req = test::TestRequest::get().uri("/api/contracts").to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let status = resp.status();
+    let body = test::read_body(resp).await;
+    let body_text = String::from_utf8_lossy(&body);
+
+    assert!(
+        status.is_success(),
+        "Expected success but got {}: {}",
+        status,
+        body_text
+    );
 }
 
 #[actix_web::test]
 async fn test_invoice_endpoints() {
     let db = Db::new(":memory:").await.expect("Failed to create test DB");
+    let organization_id = seed_test_org(&db).await;
 
     // Seed client, project, contract
     let client = backend::models::client::Client::create(
         &db,
-        backend::models::client::Client {
-            id: 0,
+        backend::models::client::CreateClient {
+            organization_id: organization_id,
             name: "Demo Client".to_string(),
             email: "demo@example.com".to_string(),
             company_name: None,
@@ -183,8 +239,6 @@ async fn test_invoice_endpoints() {
             zip: None,
             tax_id: None,
             address: None,
-            created_at: Some(Utc::now().to_rfc3339()),
-            updated_at: Some(Utc::now().to_rfc3339()),
         },
     )
     .await
@@ -193,6 +247,7 @@ async fn test_invoice_endpoints() {
     let project = backend::models::project::Project::create(
         &db,
         backend::models::project::CreateProject {
+            organization_id: organization_id,
             client_id: client.id,
             name: "Invoice Project".to_string(),
             start_date: Some(Utc::now().to_rfc3339()),
@@ -205,8 +260,8 @@ async fn test_invoice_endpoints() {
 
     let contract = backend::models::contract::Contract::create(
         &db,
-        backend::models::contract::Contract {
-            id: 0,
+        backend::models::contract::CreateContract {
+            organization_id: organization_id,
             project_id: project.id,
             title: "Invoice Contract".to_string(),
             status: "active".to_string(),
@@ -233,6 +288,7 @@ async fn test_invoice_endpoints() {
     .await;
 
     let payload = json!({
+        "organization_id": organization_id,
         "contract_id": contract.id,
         "invoice_number": "INV-001",
         "status": "pending",
@@ -251,22 +307,40 @@ async fn test_invoice_endpoints() {
         .set_json(&payload)
         .to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let status = resp.status();
+    let body = test::read_body(resp).await;
+    let body_text = String::from_utf8_lossy(&body);
 
+    assert!(
+        status.is_success(),
+        "Expected success but got {}: {}",
+        status,
+        body_text
+    );
     let req = test::TestRequest::get().uri("/api/invoices").to_request();
     let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_success());
+    let status = resp.status();
+    let body = test::read_body(resp).await;
+    let body_text = String::from_utf8_lossy(&body);
+
+    assert!(
+        status.is_success(),
+        "Expected success but got {}: {}",
+        status,
+        body_text
+    );
 }
 
 #[actix_web::test]
 async fn test_payment_endpoints() {
     let db = Db::new(":memory:").await.expect("Failed to create test DB");
+    let organization_id = seed_test_org(&db).await;
 
     // Seed client, project, contract, invoice
     let client = backend::models::client::Client::create(
         &db,
-        backend::models::client::Client {
-            id: 0,
+        backend::models::client::CreateClient {
+            organization_id: organization_id,
             name: "Demo Client".to_string(),
             email: "demo@example.com".to_string(),
             company_name: None,
@@ -277,8 +351,6 @@ async fn test_payment_endpoints() {
             zip: None,
             tax_id: None,
             address: None,
-            created_at: Some(Utc::now().to_rfc3339()),
-            updated_at: Some(Utc::now().to_rfc3339()),
         },
     )
     .await
@@ -288,6 +360,7 @@ async fn test_payment_endpoints() {
         &db,
         backend::models::project::CreateProject {
             client_id: client.id,
+            organization_id: organization_id,
             name: "Demo Project".to_string(),
             start_date: Some(Utc::now().to_rfc3339()),
             end_date: None,
@@ -299,9 +372,9 @@ async fn test_payment_endpoints() {
 
     let contract = backend::models::contract::Contract::create(
         &db,
-        backend::models::contract::Contract {
-            id: 0,
+        backend::models::contract::CreateContract {
             project_id: project.id,
+            organization_id: organization_id,
             title: "Payment Contract".to_string(),
             status: "active".to_string(),
             signed_at: Some(Utc::now().to_rfc3339()),
@@ -320,8 +393,8 @@ async fn test_payment_endpoints() {
 
     let invoice = backend::models::invoice::Invoice::create(
         &db,
-        backend::models::invoice::Invoice {
-            id: 0,
+        backend::models::invoice::CreateInvoice {
+            organization_id: organization_id,
             contract_id: contract.id,
             invoice_number: "PAY-001".to_string(),
             status: "pending".to_string(),
@@ -347,6 +420,7 @@ async fn test_payment_endpoints() {
     .await;
 
     let payload = json!({
+        "organization_id": organization_id,
         "invoice_id": invoice.id,
         "amount": 1650.0,
         "paid_at": Utc::now().to_rfc3339(),
@@ -380,4 +454,40 @@ async fn test_invoice_formatting() {
     let amount = 1200.5;
     let formatted = utils::format_currency(amount);
     assert_eq!(formatted, "$1200.50");
+}
+
+#[actix_web::test]
+async fn test_create_user_endpoint() {
+    let db = Db::new(":memory:").await.expect("Failed to create test DB");
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(db.clone()))
+            .route("/api/admin/users", web::post().to(create_user)),
+    )
+    .await;
+
+    let payload = json!({
+        "email": "new-user@test.com",
+        "password": "StrongPass123!",
+        "name": "New User",
+        "user_type": "consultant"
+    });
+
+    let req = test::TestRequest::post()
+        .uri("/api/admin/users")
+        .set_json(&payload)
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+
+    assert!(resp.status().is_success());
+
+    let user_type = sqlx::query_scalar::<_, String>("SELECT user_type FROM users WHERE email = ?")
+        .bind("new-user@test.com")
+        .fetch_one(&*db.pool)
+        .await
+        .unwrap();
+
+    assert_eq!(user_type, "consultant");
 }

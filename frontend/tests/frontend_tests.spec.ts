@@ -4,6 +4,7 @@ import LoginForm from '../components/LoginForm.vue';
 import AppHeader from '../components/AppHeader.vue';
 import ForgotPasswordForm from '../components/ForgotPasswordForm.vue';
 import ResetPasswordForm from '../components/ResetPasswordForm.vue';
+import RegisterForm from '../components/RegisterForm.vue';
 
 vi.stubGlobal('localStorage', {
   getItem: vi.fn(),
@@ -227,5 +228,74 @@ describe('ResetPasswordForm', () => {
     });
 
     expect(wrapper.text()).toContain('Invalid or expired reset token.');
+  });
+});
+describe('RegisterForm', () => {
+  it('renders consultant registration copy by default', () => {
+    const wrapper = mount(RegisterForm);
+
+    expect(wrapper.text()).toContain('Create your consultant workspace');
+    expect(wrapper.text()).toContain(
+      'Start managing clients, projects, contracts, invoices, and payments.',
+    );
+  });
+
+  it('renders client registration copy', () => {
+    const wrapper = mount(RegisterForm, {
+      props: {
+        userType: 'client',
+        submitText: 'Create client account',
+      },
+    });
+
+    expect(wrapper.text()).toContain('Create a client portal account');
+    expect(wrapper.text()).toContain('Create client account');
+  });
+
+  it('emits registration payload when form is valid', async () => {
+    const wrapper = mount(RegisterForm, {
+      props: {
+        userType: 'consultant',
+      },
+    });
+
+    await wrapper.find('#name').setValue('Peter');
+    await wrapper.find('#email').setValue('peter@example.com');
+    await wrapper.find('#password').setValue('StrongPass123!');
+    await wrapper.find('#confirmPassword').setValue('StrongPass123!');
+    await wrapper.find('form').trigger('submit.prevent');
+
+    expect(wrapper.emitted('submit')).toBeTruthy();
+    expect(wrapper.emitted('submit')?.[0]).toEqual([
+      {
+        name: 'Peter',
+        email: 'peter@example.com',
+        password: 'StrongPass123!',
+        user_type: 'consultant',
+      },
+    ]);
+  });
+
+  it('shows error when passwords do not match', async () => {
+    const wrapper = mount(RegisterForm);
+
+    await wrapper.find('#name').setValue('Peter');
+    await wrapper.find('#email').setValue('peter@example.com');
+    await wrapper.find('#password').setValue('StrongPass123!');
+    await wrapper.find('#confirmPassword').setValue('DifferentPass123!');
+    await wrapper.find('form').trigger('submit.prevent');
+
+    expect(wrapper.text()).toContain('Passwords do not match');
+    expect(wrapper.emitted('submit')).toBeFalsy();
+  });
+
+  it('renders server error when provided', () => {
+    const wrapper = mount(RegisterForm, {
+      props: {
+        error: 'Email is already registered.',
+      },
+    });
+
+    expect(wrapper.text()).toContain('Email is already registered.');
   });
 });

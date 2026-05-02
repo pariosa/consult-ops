@@ -1,5 +1,5 @@
-use crate::db::Db;
 use crate::models::Client;
+use crate::{db::Db, models::client::CreateClient};
 use actix_web::{HttpResponse, Responder, web};
 
 pub async fn get_clients(db: web::Data<Db>) -> impl Responder {
@@ -12,7 +12,7 @@ pub async fn get_clients(db: web::Data<Db>) -> impl Responder {
     }
 }
 
-pub async fn create_client(db: web::Data<Db>, info: web::Json<Client>) -> impl Responder {
+pub async fn create_client(db: web::Data<Db>, info: web::Json<CreateClient>) -> impl Responder {
     match Client::create(&db, info.into_inner()).await {
         Ok(client) => HttpResponse::Ok().json(client),
         Err(e) => {

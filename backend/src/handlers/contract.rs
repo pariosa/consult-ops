@@ -1,5 +1,5 @@
-use crate::db::Db;
 use crate::models::Contract;
+use crate::{db::Db, models::contract::CreateContract};
 use actix_web::{HttpResponse, Responder, web};
 
 /// Get all contracts
@@ -14,7 +14,7 @@ pub async fn get_contracts(db: web::Data<Db>) -> impl Responder {
 }
 
 /// Create a new contract
-pub async fn create_contract(db: web::Data<Db>, info: web::Json<Contract>) -> impl Responder {
+pub async fn create_contract(db: web::Data<Db>, info: web::Json<CreateContract>) -> impl Responder {
     let mut contract = info.into_inner();
 
     // Ensure required fields have defaults if needed

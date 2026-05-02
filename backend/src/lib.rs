@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod auth_context;
 pub mod db;
 pub mod handlers;
 pub mod models;

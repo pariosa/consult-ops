@@ -17,6 +17,7 @@ pub async fn create_project(db: web::Data<Db>, info: web::Json<CreateProject>) -
     let input = info.into_inner();
 
     let new_project = CreateProject {
+        organization_id: input.organization_id,
         client_id: input.client_id,
         name: input.name,
         start_date: Some(input.start_date.unwrap_or_else(|| Utc::now().to_rfc3339())),

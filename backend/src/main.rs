@@ -1,4 +1,5 @@
 mod auth;
+mod auth_context;
 mod db;
 mod handlers;
 mod models;

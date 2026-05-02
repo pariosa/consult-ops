@@ -102,6 +102,11 @@ button {
   background: linear-gradient(135deg, #60a5fa, #34d399);
 }
 
+input:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px #0f1d2b inset;
+  -webkit-text-fill-color: white;
+}
+
 .message {
   color: #6ee7b7;
 }

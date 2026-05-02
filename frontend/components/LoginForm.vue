@@ -151,6 +151,11 @@ input {
   color: white;
 }
 
+input:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px #0f1d2b inset;
+  -webkit-text-fill-color: white;
+}
+
 button {
   border: 0;
   border-radius: 0.85rem;

@@ -1,8 +1,54 @@
--- clients table
-CREATE TABLE clients (
+PRAGMA foreign_keys = ON;
+
+-- users table
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    name TEXT,
+    user_type TEXT NOT NULL DEFAULT 'consultant',
+    created_at TEXT,
+    updated_at TEXT
+);
+
+-- organizations table
+CREATE TABLE IF NOT EXISTS organizations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    email TEXT NOT NULL UNIQUE,
+    created_at TEXT,
+    updated_at TEXT
+);
+
+-- organization members table
+CREATE TABLE IF NOT EXISTS organization_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    role TEXT NOT NULL DEFAULT 'viewer',
+    created_at TEXT,
+    updated_at TEXT,
+    FOREIGN KEY(organization_id) REFERENCES organizations(id),
+    FOREIGN KEY(user_id) REFERENCES users(id),
+    UNIQUE(organization_id, user_id)
+);
+
+-- password reset tokens table
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    token_hash TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id)
+);
+
+-- clients table
+CREATE TABLE IF NOT EXISTS clients (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL,
     tax_id TEXT,
     phone TEXT,
     company_name TEXT,
@@ -12,12 +58,14 @@ CREATE TABLE clients (
     zip TEXT,
     country TEXT,
     created_at TEXT,
-    updated_at TEXT
+    updated_at TEXT,
+    FOREIGN KEY(organization_id) REFERENCES organizations(id)
 );
 
 -- projects table
-CREATE TABLE projects (
+CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id INTEGER NOT NULL,
     client_id INTEGER NOT NULL,
     name TEXT NOT NULL,
     start_date TEXT,
@@ -25,58 +73,55 @@ CREATE TABLE projects (
     end_date TEXT,
     created_at TEXT,
     updated_at TEXT,
+    FOREIGN KEY(organization_id) REFERENCES organizations(id),
     FOREIGN KEY(client_id) REFERENCES clients(id)
 );
 
 -- contracts table
-CREATE TABLE contracts ( 
+CREATE TABLE IF NOT EXISTS contracts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id INTEGER NOT NULL,
     project_id INTEGER NOT NULL,
-
     title TEXT NOT NULL,
     status TEXT NOT NULL,
-
     signed_at TEXT,
     start_date TEXT,
     end_date TEXT,
-
     value REAL,
     currency TEXT,
-
     terms TEXT,
     notes TEXT,
-
     external_id TEXT,
-
     created_at TEXT NOT NULL,
+    updated_at TEXT,
+    FOREIGN KEY(organization_id) REFERENCES organizations(id),
     FOREIGN KEY(project_id) REFERENCES projects(id)
 );
 
 -- invoices table
-CREATE TABLE invoices (
+CREATE TABLE IF NOT EXISTS invoices (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id INTEGER NOT NULL,
     contract_id INTEGER NOT NULL,
-
     invoice_number TEXT NOT NULL,
     status TEXT NOT NULL,
-
     issued_at TEXT,
     due_date TEXT,
-
     subtotal REAL,
     tax REAL,
     total REAL,
-
     currency TEXT,
     notes TEXT,
-
     created_at TEXT NOT NULL,
+    updated_at TEXT,
+    FOREIGN KEY(organization_id) REFERENCES organizations(id),
     FOREIGN KEY(contract_id) REFERENCES contracts(id)
 );
 
 -- payments table
-CREATE TABLE payments (
+CREATE TABLE IF NOT EXISTS payments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id INTEGER NOT NULL,
     invoice_id INTEGER NOT NULL,
     paid_at TEXT,
     amount REAL NOT NULL,
@@ -85,12 +130,7 @@ CREATE TABLE payments (
     reference TEXT,
     notes TEXT,
     created_at TEXT NOT NULL,
+    updated_at TEXT,
+    FOREIGN KEY(organization_id) REFERENCES organizations(id),
     FOREIGN KEY(invoice_id) REFERENCES invoices(id)
-);
-
--- users table (for auth)
-CREATE TABLE users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL
 );

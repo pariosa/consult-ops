@@ -4,6 +4,7 @@ use sqlx::{FromRow, Result as SqlxResult};
 
 #[derive(Deserialize)]
 pub struct CreatePayment {
+    pub organization_id: i64,
     pub invoice_id: i64,
     pub amount: f64,
     pub paid_at: Option<String>,
@@ -16,17 +17,14 @@ pub struct CreatePayment {
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
 pub struct Payment {
     pub id: i64,
+    pub organization_id: i64,
     pub invoice_id: i64,
-
-    pub paid_at: Option<String>, // datetime
+    pub paid_at: Option<String>,
     pub amount: f64,
     pub currency: Option<String>,
-
-    pub method: Option<String>,    // e.g., cash, card, bank_transfer
-    pub reference: Option<String>, // check number, txn id
-
+    pub method: Option<String>,
+    pub reference: Option<String>,
     pub notes: Option<String>,
-
     pub created_at: String,
 }
 
@@ -35,6 +33,7 @@ impl Payment {
         let now = chrono::Utc::now().to_rfc3339();
         Payment {
             id: 0,
+            organization_id: create.organization_id,
             invoice_id: create.invoice_id,
             amount: create.amount,
             paid_at: create.paid_at.or(Some(now.clone())),
@@ -55,6 +54,7 @@ impl Payment {
         let rec = sqlx::query(
             r#"
             INSERT INTO payments (
+                organization_id,
                 invoice_id,
                 paid_at,
                 amount,
@@ -63,9 +63,10 @@ impl Payment {
                 reference,
                 notes,
                 created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
+        .bind(payment.organization_id)
         .bind(payment.invoice_id)
         .bind(&payment.paid_at)
         .bind(payment.amount)

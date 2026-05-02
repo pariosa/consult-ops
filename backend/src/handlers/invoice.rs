@@ -1,5 +1,5 @@
-use crate::db::Db;
 use crate::models::Invoice;
+use crate::{db::Db, models::invoice::CreateInvoice};
 use actix_web::{HttpResponse, Responder, web};
 
 /// Get all invoices
@@ -14,7 +14,7 @@ pub async fn get_invoices(db: web::Data<Db>) -> impl Responder {
 }
 
 /// Create a new invoice
-pub async fn create_invoice(db: web::Data<Db>, info: web::Json<Invoice>) -> impl Responder {
+pub async fn create_invoice(db: web::Data<Db>, info: web::Json<CreateInvoice>) -> impl Responder {
     let mut invoice = info.into_inner();
 
     // Default status

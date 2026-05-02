@@ -6,6 +6,7 @@ use argon2::{
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
 };
 use chrono::{Duration, Utc};
+use jsonwebtoken::{EncodingKey, Header, encode};
 use rand::{RngCore, rngs::OsRng};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -50,6 +51,7 @@ pub struct User {
     pub email: String,
     pub password_hash: String,
     pub name: Option<String>,
+    pub user_type: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -59,7 +61,29 @@ pub struct AuthResponse {
     pub email: String,
 }
 
-fn hash_password(password: &str) -> Result<String, String> {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Claims {
+    pub sub: String,
+    pub email: String,
+    pub user_type: String,
+    pub exp: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LoginUser {
+    pub id: i64,
+    pub email: String,
+    pub name: Option<String>,
+    pub user_type: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LoginResponse {
+    pub token: String,
+    pub user: LoginUser,
+}
+
+pub fn hash_password(password: &str) -> Result<String, String> {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
 
@@ -124,10 +148,10 @@ pub async fn register(db: web::Data<Db>, info: web::Json<RegisterInfo>) -> impl 
 pub async fn login(db: web::Data<Db>, info: web::Json<AuthInfo>) -> impl Responder {
     let user = sqlx::query_as::<_, User>(
         r#"
-        SELECT id, email, password_hash, name
-        FROM users
-        WHERE email = ?
-        "#,
+    SELECT id, email, password_hash, name, user_type
+    FROM users
+    WHERE email = ?
+    "#,
     )
     .bind(&info.email)
     .fetch_one(&*db.pool)
@@ -139,10 +163,37 @@ pub async fn login(db: web::Data<Db>, info: web::Json<AuthInfo>) -> impl Respond
     };
 
     if verify_password(&info.password, &user.password_hash) {
-        HttpResponse::Ok().json(AuthResponse {
-            message: "Login successful".to_string(),
-            user_id: user.id,
-            email: user.email,
+        let jwt_secret = std::env::var("JWT_SECRET")
+            .unwrap_or_else(|_| "consult-ops-local-dev-secret".to_string());
+
+        let exp = (Utc::now() + Duration::hours(24)).timestamp() as usize;
+
+        let claims = Claims {
+            sub: user.id.to_string(),
+            email: user.email.clone(),
+            user_type: user.user_type.clone(),
+            exp,
+        };
+
+        let token = match encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(jwt_secret.as_bytes()),
+        ) {
+            Ok(token) => token,
+            Err(err) => {
+                return HttpResponse::InternalServerError().body(err.to_string());
+            }
+        };
+
+        HttpResponse::Ok().json(LoginResponse {
+            token,
+            user: LoginUser {
+                id: user.id,
+                email: user.email,
+                name: user.name,
+                user_type: user.user_type,
+            },
         })
     } else {
         HttpResponse::Unauthorized().body("Invalid email or password")
