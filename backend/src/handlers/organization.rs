@@ -3,12 +3,13 @@
 use crate::models::client::CreateClient;
 use crate::models::project::CreateProject;
 use crate::models::user::User;
+use crate::models::{
+    Client, Contract, Invoice, Organization, Payment, Project, UpdateOrganization,
+};
 use crate::{auth_context::AuthUser, db::Db};
 use actix_web::{HttpResponse, Responder, web};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-
-use crate::models::{Client, Organization, Project, UpdateOrganization};
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateOrganizationPayload {
@@ -378,6 +379,108 @@ pub async fn get_my_organization(db: web::Data<Db>, auth_user: AuthUser) -> impl
     match result {
         Ok(Some(org)) => HttpResponse::Ok().json(org),
         Ok(None) => HttpResponse::NotFound().body("No organization found for user"),
+        Err(err) => HttpResponse::InternalServerError().body(err.to_string()),
+    }
+}
+
+pub async fn get_organization_contracts(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
+    let organization_id = path.into_inner();
+
+    let result: sqlx::Result<Vec<Contract>> = sqlx::query_as::<_, Contract>(
+        r#"
+        SELECT
+            id,
+            organization_id,
+            project_id,
+            title,
+            status,
+            signed_at,
+            start_date,
+            end_date,
+            value,
+            currency,
+            terms,
+            notes,
+            external_id,
+            created_at,
+            updated_at
+        FROM contracts
+        WHERE organization_id = ?
+        ORDER BY created_at DESC
+        "#,
+    )
+    .bind(organization_id)
+    .fetch_all(&*db.pool)
+    .await;
+
+    match result {
+        Ok(contracts) => HttpResponse::Ok().json(contracts),
+        Err(err) => HttpResponse::InternalServerError().body(err.to_string()),
+    }
+}
+
+pub async fn get_organization_invoices(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
+    let organization_id = path.into_inner();
+
+    let result: sqlx::Result<Vec<Invoice>> = sqlx::query_as::<_, Invoice>(
+        r#"
+        SELECT
+            id,
+            organization_id,
+            contract_id,
+            invoice_number,
+            status,
+            issued_at,
+            due_date,
+            subtotal,
+            tax,
+            total,
+            currency,
+            notes,
+            created_at,
+            updated_at
+        FROM invoices
+        WHERE organization_id = ?
+        ORDER BY created_at DESC
+        "#,
+    )
+    .bind(organization_id)
+    .fetch_all(&*db.pool)
+    .await;
+
+    match result {
+        Ok(invoices) => HttpResponse::Ok().json(invoices),
+        Err(err) => HttpResponse::InternalServerError().body(err.to_string()),
+    }
+}
+
+pub async fn get_organization_payments(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
+    let organization_id = path.into_inner();
+
+    let result: sqlx::Result<Vec<Payment>> = sqlx::query_as::<_, Payment>(
+        r#"
+        SELECT
+            id,
+            organization_id,
+            invoice_id,
+            paid_at,
+            amount,
+            currency,
+            method,
+            reference,
+            notes,
+            created_at
+        FROM payments
+        WHERE organization_id = ?
+        ORDER BY created_at DESC
+        "#,
+    )
+    .bind(organization_id)
+    .fetch_all(&*db.pool)
+    .await;
+
+    match result {
+        Ok(payments) => HttpResponse::Ok().json(payments),
         Err(err) => HttpResponse::InternalServerError().body(err.to_string()),
     }
 }

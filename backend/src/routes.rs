@@ -4,7 +4,8 @@ use crate::handlers::{
     create_organization_member, create_organization_project, create_payment, create_project,
     create_user, delete_organization_member, get_admin_summary, get_client_portal_summary,
     get_clients, get_contracts, get_invoices, get_me, get_my_organization, get_organization,
-    get_organization_clients, get_organization_members, get_organization_projects, get_payments,
+    get_organization_clients, get_organization_contracts, get_organization_invoices,
+    get_organization_members, get_organization_payments, get_organization_projects, get_payments,
     get_project_portal_summary, get_projects, get_user_by_id, get_users, update_organization,
     update_organization_member, update_user_type,
 };
@@ -71,6 +72,19 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route(
                 "/project-portal/summary",
                 web::get().to(get_project_portal_summary),
+            )
+            // backend/src/routes.rs
+            .route(
+                "/organizations/{id}/contracts",
+                web::get().to(get_organization_contracts),
+            )
+            .route(
+                "/organizations/{id}/invoices",
+                web::get().to(get_organization_invoices),
+            )
+            .route(
+                "/organizations/{id}/payments",
+                web::get().to(get_organization_payments),
             )
             // Existing global routes for now
             .route("/clients", web::get().to(get_clients))
