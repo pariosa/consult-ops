@@ -134,3 +134,50 @@ CREATE TABLE IF NOT EXISTS payments (
     FOREIGN KEY(organization_id) REFERENCES organizations(id),
     FOREIGN KEY(invoice_id) REFERENCES invoices(id)
 );
+
+CREATE TABLE IF NOT EXISTS engagements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id INTEGER NOT NULL,
+    project_id INTEGER NOT NULL,
+    contractor_name TEXT NOT NULL,
+    contractor_email TEXT NOT NULL,
+    role TEXT NOT NULL,
+    title TEXT NOT NULL,
+    scope_of_work TEXT NOT NULL,
+    deliverables TEXT,
+    repo_url TEXT,
+    amount_cents INTEGER NOT NULL,
+    currency TEXT NOT NULL DEFAULT 'usd',
+    due_date TEXT,
+    status TEXT NOT NULL DEFAULT 'draft',
+    platform_fee_status TEXT NOT NULL DEFAULT 'pending',
+    contract_id INTEGER,
+    invoice_id INTEGER,
+    payment_id INTEGER,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS engagement_milestones (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    engagement_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    amount_cents INTEGER NOT NULL DEFAULT 0,
+    due_date TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS engagement_billing (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    engagement_id INTEGER NOT NULL,
+    organization_id INTEGER NOT NULL,
+    billing_type TEXT NOT NULL,
+    amount_cents INTEGER NOT NULL,
+    currency TEXT NOT NULL DEFAULT 'usd',
+    status TEXT NOT NULL DEFAULT 'pending',
+    stripe_checkout_session_id TEXT,
+    stripe_payment_intent_id TEXT,
+    paid_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
