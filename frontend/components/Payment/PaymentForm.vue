@@ -1,24 +1,53 @@
 <template>
-  <form class="form-card payment" @submit.prevent="submit">
-    <h3>Create Payment</h3>
+  <form class="form-shell payment" @submit.prevent="submit">
+    <h3 class="form-title">Create Payment</h3>
 
-    <div class="grid">
+    <div class="form-group grid">
+      <label class="form-label">Invoice ID: </label>
+
       <input
         v-model.number="form.invoice_id"
         type="number"
         placeholder="Invoice ID"
+        class="form-input"
       />
-      <input v-model.number="form.amount" type="number" placeholder="Amount" />
-      <input v-model="form.paid_at" placeholder="Paid At" />
+      <label class="form-label">Amount: </label>
+      <input
+        v-model.number="form.amount"
+        type="number"
+        placeholder="Amount"
+        class="form-input"
+      />
+      <label class="form-label">Paid At: </label>
 
-      <input v-model="form.currency" placeholder="Currency" />
-      <input v-model="form.method" placeholder="Method" />
-      <input v-model="form.reference" placeholder="Reference" />
+      <input v-model="form.paid_at" placeholder="Paid At" class="form-input" />
+      <label class="form-label">Currency: </label>
 
-      <textarea v-model="form.notes" placeholder="Notes" />
+      <input
+        v-model="form.currency"
+        placeholder="Currency"
+        class="form-input"
+      />
+      <label class="form-label">Method: </label>
+
+      <input v-model="form.method" placeholder="Method" class="form-input" />
+      <label class="form-label">Reference: </label>
+
+      <input
+        v-model="form.reference"
+        placeholder="Reference"
+        class="form-input"
+      />
+      <label class="form-label">Amount: </label>
+
+      <textarea
+        v-model="form.notes"
+        placeholder="Notes"
+        class="form-textarea"
+      />
     </div>
 
-    <button type="submit">Save Payment</button>
+    <button class="form-button" type="submit">Save Payment</button>
   </form>
 </template>
 
@@ -39,9 +68,9 @@ const submit = () => console.log('Payment:', form);
 </script>
 
 <style scoped>
-@import '../form.css';
+@import '../../assets/css/forms.css';
 .payment {
-  background: #ecfeff;
+  /* background: #ecfeff; */
 }
 .payment::before {
   background: linear-gradient(135deg, #06b6d4, #3b82f6);

@@ -1,22 +1,45 @@
 <template>
-  <form class="form-card project" @submit.prevent="submit">
-    <h3>Create Project</h3>
+  <form class="form-shell form-card project" @submit.prevent="submit">
+    <h3 class="form-title">Create Project</h3>
 
-    <div class="grid">
+    <div class="grid form-group">
+      <label class="form-label"> Client ID: </label>
+
       <input
         v-model.number="form.client_id"
         type="number"
         placeholder="Client ID"
+        class="form-input"
       />
-      <input v-model="form.name" placeholder="Project Name" />
+      <label class="form-label"> Project Name: </label>
+      <input
+        v-model="form.name"
+        placeholder="Project Name"
+        class="form-input"
+      />
+      <label class="form-label"> Start Date: </label>
 
-      <input v-model="form.start_date" placeholder="Start Date" />
-      <input v-model="form.end_date" placeholder="End Date" />
+      <input
+        v-model="form.start_date"
+        placeholder="Start Date"
+        class="form-input"
+      />
+      <label class="form-label"> End Date: </label>
 
-      <textarea v-model="form.description" placeholder="Description" />
+      <input
+        v-model="form.end_date"
+        placeholder="End Date"
+        class="form-input"
+      />
+
+      <textarea
+        v-model="form.description"
+        placeholder="Description"
+        class="form-textarea"
+      />
     </div>
 
-    <button type="submit">Save Project</button>
+    <button class="form-button" type="submit">Save Project</button>
   </form>
 </template>
 
@@ -35,9 +58,9 @@ const submit = () => console.log('Project:', form);
 </script>
 
 <style scoped>
-@import '../form.css';
+@import '../../assets/css/forms.css';
 .project {
-  background: #f0fdf4;
+  /* background: #f0fdf4; */
 }
 .project::before {
   background: linear-gradient(135deg, #22c55e, #3b82f6);

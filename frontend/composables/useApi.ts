@@ -18,5 +18,41 @@ export const useApi = () => {
     });
   };
 
-  return { apiFetch };
+  // ✅ GET
+  const get = <T>(path: string, options: any = {}) =>
+    apiFetch<T>(path, {
+      method: 'GET',
+      ...options,
+    });
+
+  // ✅ POST (what you asked for)
+  const post = <T>(path: string, body: any = {}, options: any = {}) =>
+    apiFetch<T>(path, {
+      method: 'POST',
+      body,
+      ...options,
+    });
+
+  // ✅ PATCH
+  const patch = <T>(path: string, body: any = {}, options: any = {}) =>
+    apiFetch<T>(path, {
+      method: 'PATCH',
+      body,
+      ...options,
+    });
+
+  // ✅ DELETE
+  const del = <T>(path: string, options: any = {}) =>
+    apiFetch<T>(path, {
+      method: 'DELETE',
+      ...options,
+    });
+
+  return {
+    apiFetch,
+    get,
+    post,
+    patch,
+    delete: del, // avoid reserved word issues
+  };
 };

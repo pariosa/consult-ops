@@ -1,5 +1,6 @@
 // .storybook/preview.ts
 import type { Preview } from '@storybook/vue3-vite';
+import '../assets/css/forms.css';
 
 const axiosMock = {
   get: async (url: string) => ({
