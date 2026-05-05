@@ -9,10 +9,10 @@ definePageMeta({
 </script>
 
 <template>
-  <DashboardShell>
-    <h1>Admin Panel</h1>
-    <p>Manage users, organizations, roles, and platform settings.</p>
-
+  <DashboardShell
+    title="Admin Panel"
+    subtitle="Manage users, organizations, roles, and platform settings."
+  >
     <div class="grid">
       <NuxtLink to="/admin/users" class="card">User Management</NuxtLink>
       <NuxtLink to="/organization" class="card">Organizations</NuxtLink>

@@ -48,12 +48,17 @@ export const useOrganizationStore = defineStore('organization', {
     },
 
     async fetchMembers() {
-      if (!this.organizationId) await this.fetchCurrentOrganization();
-      if (!this.organizationId) return;
+      if (!this.organization?.id) {
+        await this.fetchCurrentOrganization();
+      }
+
+      const organizationId = this.organization?.id;
+      if (!organizationId) return;
 
       const { apiFetch } = useApi();
+
       this.members = await apiFetch<OrganizationMember[]>(
-        `/api/organizations/${this.organizationId}/members`,
+        `/api/organizations/${organizationId}/members`,
       );
     },
   },

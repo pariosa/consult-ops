@@ -1,6 +1,5 @@
 <!-- pages/admin/users.vue -->
 <script setup lang="ts">
-import { definePageMeta } from 'nuxt/dist/pages/runtime';
 import { onMounted } from 'vue';
 import DashboardShell from '~/components/DashboardShell.vue';
 import UserCreateForm from '~/components/UserCreateForm.vue';

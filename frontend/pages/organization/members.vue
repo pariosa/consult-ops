@@ -1,7 +1,6 @@
 <!-- frontend/pages/organization/members.vue -->
 <script setup lang="ts">
 import { useAsyncData } from 'nuxt/app';
-import { definePageMeta } from 'nuxt/dist/pages/runtime';
 import { useOrganizationStore } from '~/stores/organization';
 
 definePageMeta({

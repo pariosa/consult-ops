@@ -6,149 +6,172 @@ import ContractCard from '~/components/Contracts/ContractCard.vue';
 
 const { apiFetch } = useApi();
 
-const { data: me } = await useAsyncData('me', () => apiFetch('/api/me'));
+const me = ref<any>(null);
+const organization = ref<any>(null);
+const summary = ref<any>(null);
+const projects = ref<any[]>([]);
+const clients = ref<any[]>([]);
+const contracts = ref<any[]>([]);
+const invoices = ref<any[]>([]);
+const payments = ref<any[]>([]);
 
-const { data: organization } = await useAsyncData('my-organization', () =>
-  apiFetch('/api/me/organization'),
-);
+const loading = ref(true);
+const error = ref('');
 
-const { data: summary } = await useAsyncData('project-summary', () =>
-  apiFetch('/api/project-portal/summary'),
-);
+async function loadPortal() {
+  loading.value = true;
+  error.value = '';
 
-const { data: projects } = await useAsyncData(
-  'organization-projects',
-  async () => {
-    const org = await apiFetch<any>('/api/me/organization');
-    return apiFetch(`/api/organizations/${org.id}/projects`);
-  },
-);
+  try {
+    me.value = await apiFetch('/api/me');
+    organization.value = await apiFetch('/api/me/organization');
 
-const { data: clients } = await useAsyncData(
-  'organization-clients',
-  async () => {
-    const org = await apiFetch<any>('/api/me/organization');
-    return apiFetch(`/api/organizations/${org.id}/clients`);
-  },
-);
+    const orgId = organization.value?.id;
 
-const { data: contracts } = await useAsyncData(
-  'organization-contracts',
-  async () => {
-    const org = await apiFetch<any>('/api/me/organization');
-    return apiFetch(`/api/organizations/${org.id}/contracts`);
-  },
-);
+    if (!orgId) {
+      throw new Error('No organization found for this user.');
+    }
 
-const { data: invoices } = await useAsyncData(
-  'organization-invoices',
-  async () => {
-    const org = await apiFetch<any>('/api/me/organization');
-    return apiFetch(`/api/organizations/${org.id}/invoices`);
-  },
-);
+    const [
+      summaryRes,
+      projectsRes,
+      clientsRes,
+      contractsRes,
+      invoicesRes,
+      paymentsRes,
+    ] = await Promise.all([
+      apiFetch('/api/project-portal/summary'),
+      apiFetch(`/api/organizations/${orgId}/projects`),
+      apiFetch(`/api/organizations/${orgId}/clients`),
+      apiFetch(`/api/organizations/${orgId}/contracts`),
+      apiFetch(`/api/organizations/${orgId}/invoices`),
+      apiFetch(`/api/organizations/${orgId}/payments`),
+    ]);
 
-const { data: payments } = await useAsyncData(
-  'organization-payments',
-  async () => {
-    const org = await apiFetch<any>('/api/me/organization');
-    return apiFetch(`/api/organizations/${org.id}/payments`);
-  },
-);
+    summary.value = summaryRes;
+    projects.value = projectsRes as any[];
+    clients.value = clientsRes as any[];
+    contracts.value = contractsRes as any[];
+    invoices.value = invoicesRes as any[];
+    payments.value = paymentsRes as any[];
+  } catch (err: any) {
+    console.error('Portal load failed:', err);
+    error.value =
+      err?.data?.message || err?.message || 'Failed to load portal.';
+  } finally {
+    loading.value = false;
+  }
+}
+
+onMounted(loadPortal);
 </script>
 
 <template>
   <DashboardShell
+    class="dashboard-shell"
     title="Consultant Project Portal"
     :subtitle="`Workspace: ${organization?.name || 'Loading organization...'}`"
   >
-    <section class="portal-hero">
-      <div>
-        <p class="eyebrow">Logged in as</p>
-        <h2>{{ me?.email || '—' }}</h2>
-      </div>
-
-      <div>
-        <p class="eyebrow">Organization</p>
-        <h2>{{ organization?.name || '—' }}</h2>
-      </div>
+    <section v-if="error" class="form-error">
+      {{ error }}
     </section>
 
-    <section class="dashboard-grid">
-      <KPITile
-        label="Assigned Projects"
-        :value="summary?.assigned_projects ?? 0"
-      />
-      <KPITile label="Active Clients" :value="summary?.active_clients ?? 0" />
-      <KPITile
-        label="Pending Invoices"
-        :value="summary?.pending_invoices ?? 0"
-      />
+    <section v-else-if="loading" class="portal-section">
+      Loading workspace...
     </section>
 
-    <section class="portal-section">
-      <div class="section-header">
-        <h2>Projects</h2>
-        <p>Organization-scoped delivery work.</p>
-      </div>
+    <template v-else>
+      <section class="portal-hero">
+        <div>
+          <p class="eyebrow">Logged in as</p>
+          <h2>{{ me?.email || '—' }}</h2>
+        </div>
 
-      <div class="card-grid">
-        <ProjectCard
-          v-for="project in projects || []"
-          :key="project.id"
-          :project="project"
+        <div>
+          <p class="eyebrow">Organization</p>
+          <h2>{{ organization?.name || '—' }}</h2>
+        </div>
+      </section>
+
+      <section class="dashboard-grid">
+        <KPITile
+          label="Assigned Projects"
+          :value="summary?.assigned_projects ?? 0"
         />
-      </div>
-    </section>
-
-    <section class="portal-section">
-      <div class="section-header">
-        <h2>Contracts</h2>
-        <p>Commercial agreements connected to project delivery.</p>
-      </div>
-
-      <div class="card-grid">
-        <ContractCard
-          v-for="contract in contracts || []"
-          :key="contract.id"
-          :contract="contract"
+        <KPITile label="Active Clients" :value="summary?.active_clients ?? 0" />
+        <KPITile
+          label="Pending Invoices"
+          :value="summary?.pending_invoices ?? 0"
         />
-      </div>
-    </section>
+      </section>
 
-    <section class="portal-section">
-      <div class="section-header">
-        <h2>Invoices</h2>
-        <p>Billing status and upcoming receivables.</p>
-      </div>
+      <section class="portal-section">
+        <div class="section-header">
+          <h2>Projects</h2>
+          <p>Organization-scoped delivery work.</p>
+        </div>
 
-      <div class="card-grid">
-        <InvoiceCard
-          v-for="invoice in invoices || []"
-          :key="invoice.id"
-          :invoice="invoice"
-        />
-      </div>
-    </section>
+        <div class="card-grid">
+          <ProjectCard
+            v-for="project in projects || []"
+            :key="project.id"
+            :project="project"
+          />
+        </div>
+      </section>
 
-    <section class="portal-section">
-      <div class="section-header">
-        <h2>Payments</h2>
-        <p>Collected payments and reconciliation references.</p>
-      </div>
+      <section class="portal-section">
+        <div class="section-header">
+          <h2>Contracts</h2>
+          <p>Commercial agreements connected to project delivery.</p>
+        </div>
 
-      <div class="card-grid">
-        <PaymentCard
-          v-for="payment in payments || []"
-          :key="payment.id"
-          :payment="payment"
-        />
-      </div>
-    </section>
+        <div class="card-grid">
+          <ContractCard
+            v-for="contract in contracts || []"
+            :key="contract.id"
+            :contract="contract"
+          />
+        </div>
+      </section>
+
+      <section class="portal-section">
+        <div class="section-header">
+          <h2>Invoices</h2>
+          <p>Billing status and upcoming receivables.</p>
+        </div>
+
+        <div class="card-grid">
+          <InvoiceCard
+            v-for="invoice in invoices || []"
+            :key="invoice.id"
+            :invoice="invoice"
+          />
+        </div>
+      </section>
+
+      <section class="portal-section">
+        <div class="section-header">
+          <h2>Payments</h2>
+          <p>Collected payments and reconciliation references.</p>
+        </div>
+
+        <div class="card-grid">
+          <PaymentCard
+            v-for="payment in payments || []"
+            :key="payment.id"
+            :payment="payment"
+          />
+        </div>
+      </section>
+    </template>
   </DashboardShell>
 </template>
 
 <style scoped>
+.dashboard-shell {
+  color: #e5f6ff;
+}
 .portal-hero {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

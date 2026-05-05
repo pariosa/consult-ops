@@ -1,7 +1,6 @@
 <!-- frontend/pages/organization/projects.vue -->
 <script setup lang="ts">
 import { useAsyncData } from 'nuxt/app';
-import { definePageMeta } from 'nuxt/dist/pages/runtime';
 import { useApi } from '~/composables/useApi';
 import { useOrganizationStore } from '~/stores/organization';
 

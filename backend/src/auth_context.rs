@@ -37,8 +37,8 @@ impl FromRequest for AuthUser {
             return ready(Err(ErrorUnauthorized("Missing bearer token")));
         };
 
-        let jwt_secret =
-            std::env::var("JWT_SECRET").unwrap_or_else(|_| "dev-secret-change-me".to_string());
+        let jwt_secret = std::env::var("JWT_SECRET")
+            .unwrap_or_else(|_| "consult-ops-local-dev-secret".to_string());
 
         let decoded = decode::<Claims>(
             token,

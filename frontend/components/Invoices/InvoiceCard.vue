@@ -8,8 +8,12 @@
 
     <div class="grid">
       <div class="row">
-        <span>Amount</span>
-        <strong>{{ formatCurrency(invoice.amount) }}</strong>
+        <h3>{{ invoice?.invoice_number || invoice?.title || 'Invoice' }}</h3>
+
+        <p>
+          Amount
+          <strong>{{ amount.toFixed(2) }}</strong>
+        </p>
       </div>
 
       <div class="row">
@@ -47,6 +51,14 @@ const props = defineProps<{ invoice: any }>();
 
 const formatCurrency = (amount: number) => `$${amount.toFixed(2)}`;
 
+const amount = computed(() => {
+  return Number(
+    props.invoice?.amount ??
+      props.invoice?.amount_cents / 100 ??
+      props.invoice?.total ??
+      0,
+  );
+});
 const cardClass = computed(() => {
   if (props.invoice.total > 10000) return 'large';
   if (props.invoice.status === 'Paid') return 'paid';

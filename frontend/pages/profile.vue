@@ -1,7 +1,5 @@
 <script setup lang="ts">
-import { definePageMeta } from 'nuxt/dist/pages/runtime';
-import { ref } from 'process';
-import { onMounted } from 'vue';
+import { ref, onMounted } from 'vue';
 import DashboardShell from '~/components/DashboardShell.vue';
 
 definePageMeta({
@@ -18,7 +16,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <DashboardShell>
+  <DashboardShell title="Profile" subtitle="Manage your account details.">
     <section class="panel">
       <p class="eyebrow">Profile</p>
       <h1>My Account</h1>
@@ -31,12 +29,12 @@ onMounted(() => {
 
         <div>
           <dt>User ID</dt>
-          <dd>{{ user.user_id }}</dd>
+          <dd>{{ user.id || user.user_id || '—' }}</dd>
         </div>
 
         <div>
           <dt>User Type</dt>
-          <dd>{{ user.user_type }}</dd>
+          <dd>{{ user.user_type || user.role || '—' }}</dd>
         </div>
       </dl>
 
@@ -44,7 +42,6 @@ onMounted(() => {
     </section>
   </DashboardShell>
 </template>
-
 <style scoped>
 .panel {
   padding: 1.5rem;

@@ -1,0 +1,21 @@
+.ops-card {
+  border: 1px solid rgba(80, 210, 176, 0.35);
+  border-radius: 1rem;
+  background:
+    linear-gradient(135deg, rgba(8, 19, 31, 0.98), rgba(13, 38, 47, 0.92));
+  color: #f8fafc;
+  box-shadow:
+    0 20px 80px rgba(0, 0, 0, 0.25),
+    0 0 18px rgba(16, 185, 129, 0.08);
+}
+
+.ops-muted {
+  color: #9fb3c8;
+}
+
+.ops-eyebrow {
+  color: #55d6be;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}

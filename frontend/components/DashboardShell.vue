@@ -1,22 +1,41 @@
 <!-- components/DashboardShell.vue -->
+<script setup lang="ts">
+import { computed } from 'vue';
+import { useAuth } from '~/composables/useAuth';
+import { navItems } from '~/utils/navItems';
+
+defineProps<{
+  title: string;
+  subtitle?: string;
+}>();
+
+const { authUser } = useAuth();
+
+const visibleNavItems = computed(() => {
+  const userType = authUser.value?.user_type || authUser.value?.role;
+
+  return navItems.filter((item) => item.roles.includes(userType));
+});
+</script>
+
 <template>
-  <section class="dashboard-shell">
+  <div class="dashboard-layout">
     <aside class="sidebar">
-      <NuxtLink to="/admin">Admin Home</NuxtLink>
-      <NuxtLink to="/admin/users">Users</NuxtLink>
-      <NuxtLink to="/organization">Organization</NuxtLink>
-      <NuxtLink to="/organization/members">Members</NuxtLink>
-      <NuxtLink to="/organization/clients">Clients</NuxtLink>
-      <NuxtLink to="/organization/projects">Projects</NuxtLink>
-      <NuxtLink to="/profile">Profile</NuxtLink>
+      <NuxtLink v-for="item in visibleNavItems" :key="item.to" :to="item.to">
+        {{ item.label }}
+      </NuxtLink>
     </aside>
 
-    <main class="content">
+    <main class="dashboard-main">
+      <header class="dashboard-header">
+        <h1>{{ title }}</h1>
+        <p v-if="subtitle">{{ subtitle }}</p>
+      </header>
+
       <slot />
     </main>
-  </section>
+  </div>
 </template>
-
 <style scoped>
 .dashboard-shell {
   display: grid;
@@ -46,5 +65,12 @@
 
 .content {
   color: white;
+}
+.dashboard-header h1 {
+  color: white;
+}
+
+.dashboard-header p {
+  color: #9fb3c8;
 }
 </style>
