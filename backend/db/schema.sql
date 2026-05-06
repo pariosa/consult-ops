@@ -134,7 +134,7 @@ CREATE TABLE IF NOT EXISTS payments (
     FOREIGN KEY(organization_id) REFERENCES organizations(id),
     FOREIGN KEY(invoice_id) REFERENCES invoices(id)
 );
-
+-- engagements table
 CREATE TABLE IF NOT EXISTS engagements (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     organization_id INTEGER NOT NULL,
@@ -156,7 +156,7 @@ CREATE TABLE IF NOT EXISTS engagements (
     payment_id INTEGER,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-
+--engagement milestones table
 CREATE TABLE IF NOT EXISTS engagement_milestones (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     engagement_id INTEGER NOT NULL,
@@ -167,7 +167,7 @@ CREATE TABLE IF NOT EXISTS engagement_milestones (
     status TEXT NOT NULL DEFAULT 'pending',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-
+-- engagement billing table
 CREATE TABLE IF NOT EXISTS engagement_billing (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     engagement_id INTEGER NOT NULL,

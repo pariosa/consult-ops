@@ -14,7 +14,16 @@ pub struct Project {
     pub created_at: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
+pub struct CreateProjectRequest {
+    pub client_id: i64,
+    pub name: String,
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
 pub struct CreateProject {
     pub organization_id: i64,
     pub client_id: i64,

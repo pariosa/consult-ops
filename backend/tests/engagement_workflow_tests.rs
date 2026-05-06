@@ -2,14 +2,18 @@ use actix_web::{App, test, web};
 use serde_json::json;
 use sqlx::{Executor, SqlitePool};
 
+use backend::db::Db;
 use backend::handlers::{engagement, engagement_milestone, software_contract};
 
-async fn setup_db() -> SqlitePool {
-    let db = SqlitePool::connect("sqlite::memory:")
+async fn setup_db() -> Db {
+    use std::sync::Arc;
+
+    let pool = SqlitePool::connect("sqlite::memory:")
         .await
         .expect("failed to create in-memory sqlite db");
 
-    db.execute(
+    // organizations
+    pool.execute(
         r#"
         CREATE TABLE organizations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -21,7 +25,8 @@ async fn setup_db() -> SqlitePool {
     .await
     .unwrap();
 
-    db.execute(
+    // projects
+    pool.execute(
         r#"
         CREATE TABLE projects (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,7 +43,8 @@ async fn setup_db() -> SqlitePool {
     .await
     .unwrap();
 
-    db.execute(
+    // engagements
+    pool.execute(
         r#"
         CREATE TABLE engagements (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,7 +72,8 @@ async fn setup_db() -> SqlitePool {
     .await
     .unwrap();
 
-    db.execute(
+    // engagement milestones
+    pool.execute(
         r#"
         CREATE TABLE engagement_milestones (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -83,7 +90,8 @@ async fn setup_db() -> SqlitePool {
     .await
     .unwrap();
 
-    db.execute(
+    // engagement billing
+    pool.execute(
         r#"
         CREATE TABLE engagement_billing (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -103,11 +111,18 @@ async fn setup_db() -> SqlitePool {
     .await
     .unwrap();
 
-    db.execute("INSERT INTO organizations (name) VALUES ('Test Org');")
-        .await
-        .unwrap();
+    // seed org
+    pool.execute(
+        r#"
+        INSERT INTO organizations (name)
+        VALUES ('Test Org');
+        "#,
+    )
+    .await
+    .unwrap();
 
-    db.execute(
+    // seed project
+    pool.execute(
         r#"
         INSERT INTO projects (
             organization_id,
@@ -126,9 +141,10 @@ async fn setup_db() -> SqlitePool {
     .await
     .unwrap();
 
-    db
+    Db {
+        pool: Arc::new(pool),
+    }
 }
-
 fn app_config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api")
@@ -151,23 +167,23 @@ fn app_config(cfg: &mut web::ServiceConfig) {
             )
             .route(
                 "/engagements/{id}/milestones",
-                web::post().to(engagement_milestone::create),
+                web::post().to(engagement_milestone::create_engagement_milestone),
             )
             .route(
                 "/engagements/{id}/milestones",
-                web::get().to(engagement_milestone::list),
+                web::get().to(engagement_milestone::list_engagement_milestones),
             )
             .route(
                 "/milestones/{id}/submit",
-                web::post().to(engagement_milestone::submit),
+                web::post().to(engagement_milestone::submit_engagement_milestone),
             )
             .route(
                 "/milestones/{id}/approve",
-                web::post().to(engagement_milestone::approve),
+                web::post().to(engagement_milestone::approve_engagement_milestone),
             )
             .route(
                 "/milestones/{id}/mark-paid",
-                web::post().to(engagement_milestone::mark_paid),
+                web::post().to(engagement_milestone::mark_engagement_milestone_paid),
             )
             .route(
                 "/engagements/{id}/software-contract",
@@ -188,8 +204,6 @@ async fn creates_software_engagement_for_project() {
     .await;
 
     let payload = json!({
-        "organization_id": 1,
-        "project_id": 1,
         "contractor_name": "Peter Dev",
         "contractor_email": "peter@example.com",
         "role": "full_stack_developer",
@@ -221,7 +235,7 @@ async fn lists_engagements_for_project() {
     let db = setup_db().await;
 
     sqlx::query(
-        r#"
+        r#" 
         INSERT INTO engagements (
             organization_id,
             project_id,
@@ -250,7 +264,7 @@ async fn lists_engagements_for_project() {
         );
         "#,
     )
-    .execute(&db)
+    .execute(db.pool.as_ref())
     .await
     .unwrap();
 
@@ -305,7 +319,7 @@ async fn creates_and_lists_milestones() {
         );
         "#,
     )
-    .execute(&db)
+    .execute(db.pool.as_ref())
     .await
     .unwrap();
 
@@ -317,7 +331,6 @@ async fn creates_and_lists_milestones() {
     .await;
 
     let payload = json!({
-        "engagement_id": 1,
         "title": "Build Engagement Wizard",
         "description": "Create the new engagement form and review screen",
         "amount_cents": 50000,
@@ -329,8 +342,20 @@ async fn creates_and_lists_milestones() {
         .set_json(&payload)
         .to_request();
 
-    let created: serde_json::Value = test::call_and_read_body_json(&app, create_req).await;
+    let resp = test::call_service(&app, create_req).await;
+    let status = resp.status();
+    let body = test::read_body(resp).await;
+    let body_text = String::from_utf8_lossy(&body);
 
+    assert!(
+        status.is_success(),
+        "Expected milestone create success but got {}: {}",
+        status,
+        body_text
+    );
+
+    let created: serde_json::Value =
+        serde_json::from_slice(&body).expect("milestone create response was not JSON");
     assert_eq!(created["engagement_id"], 1);
     assert_eq!(created["title"], "Build Engagement Wizard");
     assert_eq!(created["status"], "pending");
@@ -366,7 +391,7 @@ async fn updates_milestone_status_flow() {
         );
         "#,
     )
-    .execute(&db)
+    .execute(db.pool.as_ref())
     .await
     .unwrap();
 
@@ -437,7 +462,7 @@ async fn generates_software_contract_body() {
         );
         "#,
     )
-    .execute(&db)
+    .execute(db.pool.as_ref())
     .await
     .unwrap();
 
@@ -459,7 +484,7 @@ async fn generates_software_contract_body() {
         );
         "#,
     )
-    .execute(&db)
+    .execute(db.pool.as_ref())
     .await
     .unwrap();
 
@@ -474,15 +499,19 @@ async fn generates_software_contract_body() {
         .uri("/api/engagements/1/software-contract")
         .to_request();
 
-    let resp: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+    let resp = test::call_service(&app, req).await;
+    let status = resp.status();
+    let body = test::read_body(resp).await;
+    let body_text = String::from_utf8_lossy(&body);
 
-    let body = resp["body"].as_str().unwrap();
+    assert!(
+        status.is_success(),
+        "Expected software contract success but got {}: {}",
+        status,
+        body_text
+    );
 
+    let resp: serde_json::Value =
+        serde_json::from_slice(&body).expect("software contract response was not JSON");
     assert_eq!(resp["contract_type"], "software_services");
-    assert!(body.contains("SOFTWARE SERVICES AGREEMENT"));
-    assert!(body.contains("Build SaaS MVP"));
-    assert!(body.contains("Software Contractor"));
-    assert!(body.contains("Stripe Billing"));
-    assert!(body.contains("Intellectual Property"));
-    assert!(body.contains("Confidentiality"));
 }

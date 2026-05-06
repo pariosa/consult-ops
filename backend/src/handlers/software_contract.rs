@@ -1,24 +1,21 @@
 use actix_web::{HttpResponse, Responder, web};
-use sqlx::SqlitePool;
 
+use crate::db::Db;
 use crate::models::engagement::Engagement;
 use crate::models::engagement_milestone::EngagementMilestone;
-
-pub async fn generate_for_engagement(
-    db: web::Data<SqlitePool>,
-    path: web::Path<i64>,
-) -> impl Responder {
+pub async fn generate_for_engagement(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
     let engagement_id = path.into_inner();
 
-    let engagement = match Engagement::find(&db, engagement_id).await {
+    let engagement = match Engagement::find(db.pool.as_ref(), engagement_id).await {
         Ok(item) => item,
         Err(err) => return HttpResponse::NotFound().body(err.to_string()),
     };
 
-    let milestones = match EngagementMilestone::for_engagement(&db, engagement_id).await {
-        Ok(items) => items,
-        Err(err) => return HttpResponse::InternalServerError().body(err.to_string()),
-    };
+    let milestones =
+        match EngagementMilestone::for_engagement(db.pool.as_ref(), engagement_id).await {
+            Ok(items) => items,
+            Err(err) => return HttpResponse::InternalServerError().body(err.to_string()),
+        };
 
     let body = render_software_contract(&engagement, &milestones);
 

@@ -1,21 +1,25 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue';
-import { useEngagements } from '../composables/useEngagements';
+import { onMounted, reactive, ref } from 'vue';
+import { useApi } from '~/composables/useApi';
+import { useProjects } from '~/composables/useProjects';
 
 const props = defineProps<{
-  projectId: number;
-  organizationId: number;
   mockSubmit?: boolean;
 }>();
+
 const emit = defineEmits<{
-  created: [engagement: any];
+  submit: [payload: any];
 }>();
 
-const { createEngagement } = useEngagements();
+const { get } = useApi();
+const { getOrganizationProjects } = useProjects();
+
+const projects = ref<any[]>([]);
+const loadingProjects = ref(false);
+const error = ref('');
 
 const form = reactive({
-  organization_id: props.organizationId,
-  project_id: props.projectId,
+  project_id: 0,
   contractor_name: '',
   contractor_email: '',
   role: 'full_stack_developer',
@@ -28,37 +32,37 @@ const form = reactive({
   due_date: '',
 });
 
-const loading = ref(false);
-const error = ref('');
-
-async function submit() {
-  loading.value = true;
+async function loadProjects() {
+  loadingProjects.value = true;
   error.value = '';
-  if (props.mockSubmit) {
-    emit('created', {
-      id: Date.now(),
-      ...form,
-      status: 'draft',
-      platform_fee_status: 'pending',
-      created_at: new Date().toISOString(),
-    });
 
-    loading.value = false;
-    return;
-  }
   try {
-    const engagement = await createEngagement(props.projectId, {
-      ...form,
-      amount_cents: Number(form.amount_cents),
-    });
+    const organization = await get('/api/me/organization');
+    projects.value = await getOrganizationProjects(organization.id);
 
-    emit('created', engagement);
+    if (!form.project_id && projects.value.length) {
+      form.project_id = projects.value[0].id;
+    }
   } catch (err: any) {
-    error.value = err?.message || 'Could not create engagement';
+    error.value = err?.message || 'Could not load projects.';
   } finally {
-    loading.value = false;
+    loadingProjects.value = false;
   }
 }
+
+function submit() {
+  if (!form.project_id) {
+    error.value = 'Select a project before creating an engagement.';
+    return;
+  }
+
+  emit('submit', {
+    ...form,
+    amount_cents: Number(form.amount_cents),
+  });
+}
+
+onMounted(loadProjects);
 </script>
 <template>
   <form
@@ -76,7 +80,29 @@ async function submit() {
         Define the developer, scope, deliverables, repo, and payment terms.
       </p>
     </div>
+    <div class="form-group space-y-2">
+      <label class="form-label text-sm font-medium text-slate-100">
+        Project
+      </label>
 
+      <select
+        v-model.number="form.project_id"
+        class="form-input w-full rounded-xl border border-slate-600 bg-slate-900 px-4 py-3 text-white focus:border-cyan-300 focus:outline-none"
+        required
+      >
+        <option disabled :value="0">
+          {{ loadingProjects ? 'Loading projects...' : 'Select project' }}
+        </option>
+
+        <option
+          v-for="project in projects"
+          :key="project.id"
+          :value="project.id"
+        >
+          {{ project.name }}
+        </option>
+      </select>
+    </div>
     <div class="form-group grid gap-4 md:grid-cols-2">
       <div class="space-y-2">
         <label class="form-label text-sm font-medium text-slate-100"

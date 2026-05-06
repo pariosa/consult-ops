@@ -22,6 +22,13 @@ pub struct CreateEngagementMilestone {
     pub due_date: Option<String>,
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct CreateEngagementMilestoneRequest {
+    pub title: String,
+    pub description: Option<String>,
+    pub amount_cents: Option<i64>,
+    pub due_date: Option<String>,
+}
 impl EngagementMilestone {
     pub async fn create(db: &SqlitePool, input: CreateEngagementMilestone) -> SqlxResult<Self> {
         sqlx::query_as::<_, EngagementMilestone>(

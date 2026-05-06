@@ -1,5 +1,5 @@
 use crate::db::Db;
-use crate::models::project::{CreateProject, Project};
+use crate::models::project::{CreateProject, CreateProjectRequest, Project};
 use actix_web::{HttpResponse, Responder, web};
 use chrono::Utc;
 
@@ -13,16 +13,21 @@ pub async fn get_projects(db: web::Data<Db>) -> impl Responder {
     }
 }
 
-pub async fn create_project(db: web::Data<Db>, info: web::Json<CreateProject>) -> impl Responder {
+pub async fn create_project(
+    db: web::Data<Db>,
+    path: web::Path<i64>,
+    info: web::Json<CreateProjectRequest>,
+) -> impl Responder {
+    let organization_id = path.into_inner();
     let input = info.into_inner();
 
     let new_project = CreateProject {
-        organization_id: input.organization_id,
+        organization_id,
         client_id: input.client_id,
         name: input.name,
-        start_date: Some(input.start_date.unwrap_or_else(|| Utc::now().to_rfc3339())),
+        start_date: input.start_date.or_else(|| Some(Utc::now().to_rfc3339())),
         description: input.description,
-        end_date: Some(input.end_date.unwrap_or_else(|| Utc::now().to_rfc3339())),
+        end_date: input.end_date.or_else(|| Some(Utc::now().to_rfc3339())),
     };
 
     match Project::create(&db, new_project).await {

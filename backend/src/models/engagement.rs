@@ -40,6 +40,20 @@ pub struct CreateEngagement {
     pub due_date: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct CreateEngagementRequest {
+    pub contractor_name: String,
+    pub contractor_email: String,
+    pub role: String,
+    pub title: String,
+    pub scope_of_work: String,
+    pub deliverables: Option<String>,
+    pub repo_url: Option<String>,
+    pub amount_cents: i64,
+    pub currency: Option<String>,
+    pub due_date: Option<String>,
+}
+
 impl Engagement {
     pub async fn create(db: &SqlitePool, input: CreateEngagement) -> SqlxResult<Self> {
         let currency = input.currency.unwrap_or_else(|| "usd".to_string());

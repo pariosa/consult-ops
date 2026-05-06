@@ -12,8 +12,16 @@ pub async fn get_clients(db: web::Data<Db>) -> impl Responder {
     }
 }
 
-pub async fn create_client(db: web::Data<Db>, info: web::Json<CreateClient>) -> impl Responder {
-    match Client::create(&db, info.into_inner()).await {
+pub async fn create_client(
+    db: web::Data<Db>,
+    path: web::Path<i64>,
+    info: web::Json<CreateClient>,
+) -> impl Responder {
+    let organization_id = path.into_inner();
+    let mut payload = info.into_inner();
+    payload.organization_id = organization_id;
+
+    match Client::create(&db, payload).await {
         Ok(client) => HttpResponse::Ok().json(client),
         Err(e) => {
             eprintln!("DB error: {}", e);

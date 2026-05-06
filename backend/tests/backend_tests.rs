@@ -28,12 +28,17 @@ async fn seed_test_org(db: &Db) -> i64 {
 async fn test_client_endpoints() {
     let db = Db::new(":memory:").await.expect("Failed to create test DB");
     let organization_id = seed_test_org(&db).await;
-
     let app = test::init_service(
         App::new()
             .app_data(web::Data::new(db.clone()))
-            .route("/api/clients", web::get().to(get_clients))
-            .route("/api/clients", web::post().to(create_client)),
+            .route(
+                "/api/organizations/{organization_id}/clients",
+                web::get().to(get_clients),
+            )
+            .route(
+                "/api/organizations/{organization_id}/clients",
+                web::post().to(create_client),
+            ),
     )
     .await;
 
@@ -45,7 +50,7 @@ async fn test_client_endpoints() {
         "phone": "555-1234"
     });
     let req = test::TestRequest::post()
-        .uri("/api/clients")
+        .uri(&format!("/api/organizations/{}/clients", organization_id))
         .set_json(&payload)
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -61,7 +66,9 @@ async fn test_client_endpoints() {
     );
 
     // Get clients
-    let req = test::TestRequest::get().uri("/api/clients").to_request();
+    let req = test::TestRequest::get()
+        .uri(&format!("/api/organizations/{}/clients", organization_id))
+        .to_request();
     let resp = test::call_service(&app, req).await;
     let status = resp.status();
     let body = test::read_body(resp).await;
@@ -103,26 +110,33 @@ async fn test_project_endpoints() {
     let app = test::init_service(
         App::new()
             .app_data(web::Data::new(db.clone()))
-            .route("/api/projects", web::get().to(get_projects))
-            .route("/api/projects", web::post().to(create_project)),
+            .route(
+                "/api/organizations/{organization_id}/projects",
+                web::get().to(get_projects),
+            )
+            .route(
+                "/api/organizations/{organization_id}/projects",
+                web::post().to(create_project),
+            ),
     )
     .await;
 
     let payload = json!({
-        "organization_id": organization_id,
         "client_id": client.id,
         "name": "Test Project",
         "start_date": Utc::now().to_rfc3339()
     });
 
     let req = test::TestRequest::post()
-        .uri("/api/projects")
+        .uri("/api/organizations/1/projects")
         .set_json(&payload)
         .to_request();
     let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_success());
 
-    let req = test::TestRequest::get().uri("/api/projects").to_request();
+    let req = test::TestRequest::get()
+        .uri("/api/organizations/1/projects")
+        .to_request();
     let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_success());
 }

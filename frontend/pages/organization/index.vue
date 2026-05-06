@@ -94,6 +94,8 @@ onMounted(loadOrganizationOverview);
         <KPITile label="Clients" :value="clients.length" />
       </NuxtLink>
 
+      <NuxtLink to="/engagements">Engagements</NuxtLink>
+
       <!-- <NuxtLink to="/contracts" class="kpi-link"> -->
       <KPITile label="Contracts" :value="contracts.length" />
       <!-- </NuxtLink> -->
@@ -108,13 +110,3 @@ onMounted(loadOrganizationOverview);
     </section>
   </DashboardShell>
 </template>
-
-<style>
-.shell-header h1 {
-  color: white;
-}
-
-.shell-header p {
-  color: #9fb3c8;
-}
-</style>

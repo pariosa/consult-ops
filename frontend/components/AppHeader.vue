@@ -39,6 +39,7 @@ const canImpersonate = computed(() => authUser.value?.role === 'admin');
       </button>
 
       <div v-if="menuOpen" class="dropdown">
+        <NuxtLink to="/engagements">Engagements</NuxtLink>
         <NuxtLink to="/project-portal">Dashboard</NuxtLink>
         <NuxtLink to="/settings/billing">Billing</NuxtLink>
 

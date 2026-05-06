@@ -1,7 +1,7 @@
 // backend/src/handlers/organization.rs
 
 use crate::models::client::CreateClient;
-use crate::models::project::CreateProject;
+use crate::models::project::{CreateProject, CreateProjectRequest};
 use crate::models::user::User;
 use crate::models::{
     Client, Contract, Invoice, Organization, Payment, Project, UpdateOrganization,
@@ -270,23 +270,31 @@ pub async fn get_admin_summary(db: web::Data<Db>) -> impl Responder {
         Err(err) => HttpResponse::InternalServerError().body(err.to_string()),
     }
 }
-
 pub async fn create_organization_project(
     db: web::Data<Db>,
     path: web::Path<i64>,
-    payload: web::Json<CreateProject>,
+    payload: web::Json<CreateProjectRequest>,
 ) -> impl Responder {
     let organization_id = path.into_inner();
-    let mut project = payload.into_inner();
+    let input = payload.into_inner();
 
-    project.organization_id = organization_id;
+    let project = CreateProject {
+        organization_id,
+        client_id: input.client_id,
+        name: input.name,
+        start_date: input.start_date,
+        end_date: input.end_date,
+        description: input.description,
+    };
 
     match Project::create(&db, project).await {
         Ok(project) => HttpResponse::Created().json(project),
-        Err(err) => HttpResponse::InternalServerError().body(err.to_string()),
+        Err(err) => {
+            eprintln!("DB error creating project: {:?}", err);
+            HttpResponse::InternalServerError().body(err.to_string())
+        }
     }
 }
-
 pub async fn create_organization_client(
     db: web::Data<Db>,
     path: web::Path<i64>,
