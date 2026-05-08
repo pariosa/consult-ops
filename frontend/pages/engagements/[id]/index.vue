@@ -1,6 +1,5 @@
+<!-- frontend/pages/engagements/[id]/index.vue-->
 <script setup lang="ts">
-import { useRoute } from 'nuxt/app';
-import type { ref } from 'process';
 import { onMounted } from 'vue';
 import { useEngagementMilestones } from '~/composables/useEngagementMilestones';
 import { useEngagements } from '~/composables/useEngagements';
@@ -10,6 +9,7 @@ import SoftwareContractPreview from '~/components/Contracts/SoftwareContractPrev
 const route = useRoute();
 const engagementId = Number(route.params.id);
 
+const router = useRouter();
 const {
   getEngagement,
   generateSoftwareContract,
@@ -68,6 +68,15 @@ async function markPaidLocal(id: number) {
   await refresh();
 }
 
+function goToMilestones() {
+  console.log('goToMilestones clicked', engagementId);
+  router.push(`/engagements/${engagementId}/milestones`);
+}
+
+function goToBilling() {
+  console.log('goToBilling clicked', engagementId);
+  router.push(`/engagements/${engagementId}/billing`);
+}
 onMounted(refresh);
 </script>
 
@@ -111,20 +120,13 @@ onMounted(refresh);
         <button class="form-button" @click="markSignedLocal">
           Mark Contract Signed
         </button>
-
-        <NuxtLink
-          class="form-button link-button"
-          :to="`/engagements/${engagementId}/milestones`"
-        >
+        <button type="button" class="form-button" @click="goToMilestones">
           Manage Milestones
-        </NuxtLink>
+        </button>
 
-        <NuxtLink
-          class="form-button link-button"
-          :to="`/engagements/${engagementId}/billing`"
-        >
+        <button type="button" class="form-button" @click="goToBilling">
           Payment Workflow
-        </NuxtLink>
+        </button>
       </section>
 
       <SoftwareContractPreview v-if="contractPreview" :body="contractPreview" />

@@ -1,4 +1,4 @@
-import { useApi } from '~/composables/useApi';
+import { useApi } from '../composables/useApi';
 
 export function useClients() {
   const { get, post } = useApi();

@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { useRoute } from 'nuxt/app';
-import { definePageMeta } from 'nuxt/dist/pages/runtime';
 import { computed, onMounted, ref } from 'vue';
 import DashboardShell from '~/components/DashboardShell.vue';
 import UserTypeEditor from '~/components/UserTypeEditor.vue';

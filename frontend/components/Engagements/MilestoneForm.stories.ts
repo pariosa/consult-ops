@@ -7,7 +7,15 @@ const meta: Meta<typeof MilestoneForm> = {
   tags: ['autodocs'],
   args: {
     engagementId: 1,
-    mockSubmit: true,
+    loading: false,
+  },
+  argTypes: {
+    submit: {
+      action: 'submit',
+    },
+    created: {
+      action: 'created',
+    },
   },
 };
 
@@ -15,21 +23,51 @@ export default meta;
 
 type Story = StoryObj<typeof MilestoneForm>;
 
-export const Empty: Story = {};
+export const Default: Story = {
+  args: {
+    engagementId: 1,
+  },
+};
+
+export const Loading: Story = {
+  args: {
+    engagementId: 1,
+    loading: true,
+  },
+};
 
 export const InEngagementContext: Story = {
+  args: {
+    engagementId: 42,
+  },
+
   render: (args) => ({
     components: { MilestoneForm },
-    setup() {
-      function handleCreated(milestone: any) {
-        console.log('Created milestone:', milestone);
-      }
 
-      return { args, handleCreated };
+    setup() {
+      return { args };
     },
+
     template: `
-      <div style="max-width: 720px; padding: 24px;">
-        <MilestoneForm v-bind="args" @created="handleCreated" />
+      <div
+        style="
+          min-height: 100vh;
+          padding: 48px;
+          background: #020617;
+        "
+      >
+        <div
+          style="
+            max-width: 720px;
+            margin: 0 auto;
+          "
+        >
+          <MilestoneForm
+            v-bind="args"
+            @submit="args.submit"
+            @created="args.created"
+          />
+        </div>
       </div>
     `,
   }),

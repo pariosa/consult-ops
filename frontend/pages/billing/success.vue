@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { useRoute, useRouter } from 'nuxt/app';
 import { computed } from 'vue';
 
 const route = useRoute();

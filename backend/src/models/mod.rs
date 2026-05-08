@@ -12,6 +12,7 @@ pub mod user;
 pub use client::Client;
 pub use contract::Contract;
 pub use engagement::Engagement;
+pub use engagement_milestone::EngagementMilestone;
 pub use invoice::Invoice;
 pub use organization::{CreateOrganization, Organization, UpdateOrganization};
 pub use payment::Payment;

@@ -1,6 +1,5 @@
 <!-- frontend/pages/organization/clients.vue -->
 <script setup lang="ts">
-import { useAsyncData } from 'nuxt/app';
 import { useApi } from '~/composables/useApi';
 import { useOrganizationStore } from '~/stores/organization';
 

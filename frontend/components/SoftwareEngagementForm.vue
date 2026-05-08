@@ -1,56 +1,45 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue';
-import { useApi } from '~/composables/useApi';
-import { useProjects } from '~/composables/useProjects';
+import { reactive, ref, watch } from 'vue';
 
 const props = defineProps<{
-  mockSubmit?: boolean;
+  projects?: any[];
+  modelValue?: any;
+  loading?: boolean;
 }>();
 
 const emit = defineEmits<{
   submit: [payload: any];
 }>();
 
-const { get } = useApi();
-const { getOrganizationProjects } = useProjects();
-
-const projects = ref<any[]>([]);
-const loadingProjects = ref(false);
 const error = ref('');
 
 const form = reactive({
-  project_id: 0,
-  contractor_name: '',
-  contractor_email: '',
-  role: 'full_stack_developer',
-  title: '',
-  scope_of_work: '',
-  deliverables: '',
-  repo_url: '',
-  amount_cents: 0,
-  currency: 'usd',
-  due_date: '',
+  project_id: props.modelValue?.project_id ?? props.projects?.[0]?.id ?? 0,
+  contractor_name: props.modelValue?.contractor_name ?? '',
+  contractor_email: props.modelValue?.contractor_email ?? '',
+  role: props.modelValue?.role ?? 'full_stack_developer',
+  title: props.modelValue?.title ?? '',
+  scope_of_work: props.modelValue?.scope_of_work ?? '',
+  deliverables: props.modelValue?.deliverables ?? '',
+  repo_url: props.modelValue?.repo_url ?? '',
+  amount_cents: props.modelValue?.amount_cents ?? 0,
+  currency: props.modelValue?.currency ?? 'usd',
+  due_date: props.modelValue?.due_date ?? '',
 });
 
-async function loadProjects() {
-  loadingProjects.value = true;
-  error.value = '';
-
-  try {
-    const organization = await get('/api/me/organization');
-    projects.value = await getOrganizationProjects(organization.id);
-
-    if (!form.project_id && projects.value.length) {
-      form.project_id = projects.value[0].id;
+watch(
+  () => props.projects,
+  (projects) => {
+    if (!form.project_id && projects?.length) {
+      form.project_id = projects[0].id;
     }
-  } catch (err: any) {
-    error.value = err?.message || 'Could not load projects.';
-  } finally {
-    loadingProjects.value = false;
-  }
-}
+  },
+  { immediate: true, deep: true },
+);
 
 function submit() {
+  error.value = '';
+
   if (!form.project_id) {
     error.value = 'Select a project before creating an engagement.';
     return;
@@ -59,10 +48,9 @@ function submit() {
   emit('submit', {
     ...form,
     amount_cents: Number(form.amount_cents),
+    due_date: form.due_date || null,
   });
 }
-
-onMounted(loadProjects);
 </script>
 <template>
   <form
@@ -95,7 +83,7 @@ onMounted(loadProjects);
         </option>
 
         <option
-          v-for="project in projects"
+          v-for="project in props.projects"
           :key="project.id"
           :value="project.id"
         >

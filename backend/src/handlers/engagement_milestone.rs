@@ -3,6 +3,7 @@ use actix_web::{HttpResponse, Responder, web};
 use crate::db::Db;
 use crate::models::engagement_milestone::{
     CreateEngagementMilestone, CreateEngagementMilestoneRequest, EngagementMilestone,
+    UpdateEngagementMilestoneRequest,
 };
 
 /// CREATE milestone for engagement
@@ -103,6 +104,46 @@ pub async fn mark_engagement_milestone_paid(
         Err(err) => {
             eprintln!("mark_engagement_milestone_paid error: {:?}", err);
 
+            HttpResponse::InternalServerError().body(err.to_string())
+        }
+    }
+}
+
+/// UPDATE milestone details
+pub async fn update_engagement_milestone(
+    db: web::Data<Db>,
+    path: web::Path<i64>,
+    payload: web::Json<UpdateEngagementMilestoneRequest>,
+) -> impl Responder {
+    let milestone_id = path.into_inner();
+    let input = payload.into_inner();
+
+    println!("Updating milestone_id: {}", milestone_id);
+
+    match EngagementMilestone::update(db.pool.as_ref(), milestone_id, input).await {
+        Ok(item) => HttpResponse::Ok().json(item),
+
+        Err(err) => {
+            eprintln!("update_engagement_milestone error: {:?}", err);
+            HttpResponse::InternalServerError().body(err.to_string())
+        }
+    }
+}
+
+/// REOPEN milestone
+pub async fn reopen_engagement_milestone(
+    db: web::Data<Db>,
+    path: web::Path<i64>,
+) -> impl Responder {
+    let milestone_id = path.into_inner();
+
+    println!("Reopening milestone_id: {}", milestone_id);
+
+    match EngagementMilestone::reopen(db.pool.as_ref(), milestone_id).await {
+        Ok(item) => HttpResponse::Ok().json(item),
+
+        Err(err) => {
+            eprintln!("reopen_engagement_milestone error: {:?}", err);
             HttpResponse::InternalServerError().body(err.to_string())
         }
     }

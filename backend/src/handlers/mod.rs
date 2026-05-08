@@ -22,8 +22,5 @@ pub use project::{create_project, get_projects};
 pub use user::{create_user, get_user_by_id, get_users, update_user_type};
 
 pub use engagement::{create_for_project, list_for_project, mark_contract_sent, mark_signed, show};
-pub use engagement_milestone::{
-    approve_engagement_milestone, create_engagement_milestone, list_engagement_milestones,
-    mark_engagement_milestone_paid, submit_engagement_milestone,
-};
+pub use engagement_milestone::*;
 pub use software_contract::generate_for_engagement;

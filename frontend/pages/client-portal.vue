@@ -1,6 +1,5 @@
 <!-- frontend/pages/client-portal.vue -->
 <script setup lang="ts">
-import { useAsyncData } from 'nuxt/app';
 import { useApi } from '~/composables/useApi';
 
 definePageMeta({

@@ -1,71 +1,53 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue';
-import { useEngagementMilestones } from '../../composables/useEngagementMilestones';
 
 const props = defineProps<{
   engagementId: number;
-  mockSubmit?: boolean;
+  loading?: boolean;
 }>();
 
 const emit = defineEmits<{
+  submit: [payload: any];
   created: [milestone: any];
 }>();
 
-const { createMilestone } = useEngagementMilestones();
+const error = ref('');
 
 const form = reactive({
-  engagement_id: props.engagementId,
   title: '',
   description: '',
   amount_cents: 0,
   due_date: '',
 });
 
-const loading = ref(false);
-const error = ref('');
-
-async function submit() {
-  loading.value = true;
-  error.value = '';
-
-  try {
-    if (props.mockSubmit) {
-      const milestone = {
-        id: Date.now(),
-        engagement_id: props.engagementId,
-        title: form.title,
-        description: form.description,
-        amount_cents: Number(form.amount_cents),
-        due_date: form.due_date,
-        status: 'pending',
-        created_at: new Date().toISOString(),
-      };
-
-      emit('created', milestone);
-      resetForm();
-      return;
-    }
-
-    const milestone = await createMilestone(props.engagementId, {
-      ...form,
-      engagement_id: props.engagementId,
-      amount_cents: Number(form.amount_cents),
-    });
-
-    emit('created', milestone);
-    resetForm();
-  } catch (err: any) {
-    error.value = err?.message || 'Could not create milestone';
-  } finally {
-    loading.value = false;
-  }
-}
-
 function resetForm() {
   form.title = '';
   form.description = '';
   form.amount_cents = 0;
   form.due_date = '';
+}
+
+function submit() {
+  error.value = '';
+
+  const payload = {
+    title: form.title,
+    description: form.description,
+    amount_cents: Number(form.amount_cents),
+    due_date: form.due_date || null,
+  };
+
+  emit('submit', payload);
+
+  emit('created', {
+    id: Date.now(),
+    engagement_id: props.engagementId,
+    ...payload,
+    status: 'pending',
+    created_at: new Date().toISOString(),
+  });
+
+  resetForm();
 }
 </script>
 
@@ -121,39 +103,35 @@ function resetForm() {
     </div>
 
     <div class="form-group">
-      <div class="">
-        <label
-          for="milestone-amount"
-          class="form-label text-sm font-medium text-slate-100"
-        >
-          Amount in cents
-        </label>
-        <input
-          id="milestone-amount"
-          v-model="form.amount_cents"
-          data-testid="amount"
-          type="number"
-          class="form-input w-full rounded-xl border border-slate-600 bg-slate-900 text-white placeholder:text-slate-500 focus:border-cyan-300 focus:outline-none"
-          placeholder="50000"
-          required
-        />
-      </div>
+      <label
+        for="milestone-amount"
+        class="form-label text-sm font-medium text-slate-100"
+      >
+        Amount in cents
+      </label>
+      <input
+        id="milestone-amount"
+        v-model.number="form.amount_cents"
+        data-testid="amount"
+        type="number"
+        class="form-input w-full rounded-xl border border-slate-600 bg-slate-900 text-white placeholder:text-slate-500 focus:border-cyan-300 focus:outline-none"
+        placeholder="50000"
+        required
+      />
 
-      <div class="form-group">
-        <label
-          for="milestone-due-date"
-          class="form-label text-sm font-medium text-slate-100"
-        >
-          Due Date
-        </label>
-        <input
-          id="milestone-due-date"
-          v-model="form.due_date"
-          data-testid="due_date"
-          type="date"
-          class="form-input w-full rounded-xl border border-slate-600 bg-slate-900 text-white focus:border-cyan-300 focus:outline-none"
-        />
-      </div>
+      <label
+        for="milestone-due-date"
+        class="form-label text-sm font-medium text-slate-100"
+      >
+        Due Date
+      </label>
+      <input
+        id="milestone-due-date"
+        v-model="form.due_date"
+        data-testid="due_date"
+        type="date"
+        class="form-input w-full rounded-xl border border-slate-600 bg-slate-900 text-white focus:border-cyan-300 focus:outline-none"
+      />
     </div>
 
     <p

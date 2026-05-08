@@ -1,15 +1,33 @@
+<!-- frontend/pages/engagements/[id]/milestones.vue -->
 <script setup lang="ts">
-import { useRoute } from 'nuxt/app';
-import { ref } from 'process';
+import { ref } from 'vue';
+import MilestoneForm from '~/components/Engagements/MilestoneForm.vue';
 import { useEngagementMilestones } from '~/composables/useEngagementMilestones';
 import { useEngagements } from '~/composables/useEngagements';
 
 const route = useRoute();
 const engagementId = Number(route.params.id);
 
+const showCreateForm = ref(false);
+const editingMilestoneId = ref<number | null>(null);
+
+const editForm = ref({
+  title: '',
+  description: '',
+  amount_cents: 0,
+});
+
 const { getEngagement } = useEngagements();
-const { getMilestones, submitMilestone, approveMilestone, markMilestonePaid } =
-  useEngagementMilestones();
+
+const {
+  getMilestones,
+  submitMilestone,
+  approveMilestone,
+  markMilestonePaid,
+  createMilestone,
+  updateMilestone,
+  reopenMilestone,
+} = useEngagementMilestones();
 
 const engagement = ref<any>(null);
 const milestones = ref<any[]>([]);
@@ -19,7 +37,33 @@ async function refresh() {
   milestones.value = await getMilestones(engagementId);
 }
 
-async function onCreated() {
+function startEditing(milestone: any) {
+  editingMilestoneId.value = milestone.id;
+  editForm.value = {
+    title: milestone.title,
+    description: milestone.description ?? '',
+    amount_cents: milestone.amount_cents,
+  };
+}
+
+function cancelEditing() {
+  editingMilestoneId.value = null;
+}
+
+async function saveMilestone(id: number) {
+  await updateMilestone(id, editForm.value);
+  editingMilestoneId.value = null;
+  await refresh();
+}
+
+async function reopen(id: number) {
+  await reopenMilestone(id);
+  await refresh();
+}
+
+async function createMilestoneLocal(payload: any) {
+  await createMilestone(engagementId, payload);
+  showCreateForm.value = false;
   await refresh();
 }
 
@@ -42,48 +86,170 @@ await refresh();
 </script>
 
 <template>
-  <main class="p-6 max-w-5xl mx-auto space-y-6">
-    <section v-if="engagement">
-      <NuxtLink :to="`/engagements/${engagementId}`" class="text-sm opacity-75">
+  <DashboardShell
+    title="Milestone Management"
+    subtitle="Track deliverables, approvals, and contractor payouts."
+  >
+    <section class="portal-section">
+      <NuxtLink
+        :to="`/engagements/${engagementId}`"
+        class="text-cyan-300 hover:text-cyan-200"
+      >
         ← Back to engagement
       </NuxtLink>
 
-      <h1 class="text-2xl font-bold mt-2">
-        Milestones for {{ engagement.title }}
-      </h1>
+      <div class="section-header mt-4">
+        <div>
+          <p class="eyebrow">Engagement</p>
+          <h2 class="text-2xl font-bold text-white">
+            {{ engagement?.title || 'Engagement' }}
+          </h2>
+        </div>
+
+        <button
+          class="form-button"
+          type="button"
+          @click="showCreateForm = !showCreateForm"
+        >
+          {{ showCreateForm ? 'Close Form' : 'Add Milestone' }}
+        </button>
+      </div>
     </section>
 
-    <MilestoneForm :engagement-id="engagementId" @created="onCreated" />
+    <section v-if="showCreateForm" class="portal-section">
+      <MilestoneForm
+        :engagement-id="engagementId"
+        @submit="createMilestoneLocal"
+      />
+    </section>
 
-    <section class="rounded-xl border p-4">
-      <h2 class="text-lg font-bold mb-4">Milestone Tracker</h2>
+    <section class="portal-section">
+      <div class="section-header">
+        <div>
+          <h2 class="text-2xl font-bold text-white">Milestones</h2>
+          <p class="text-slate-300">
+            Submit work, approve milestones, and mark payouts complete.
+          </p>
+        </div>
+      </div>
 
-      <div v-if="!milestones.length" class="opacity-70">No milestones yet.</div>
+      <div v-if="!milestones.length" class="empty-state">
+        No milestones created yet.
+      </div>
 
       <div
         v-for="milestone in milestones"
         :key="milestone.id"
-        class="rounded-lg border p-4 mb-3 space-y-2"
+        class="ops-card milestone-card"
       >
-        <div class="flex justify-between gap-4">
-          <div>
-            <h3 class="font-bold">{{ milestone.title }}</h3>
-            <p class="text-sm opacity-75">{{ milestone.description }}</p>
-            <p class="text-sm">
-              Amount: ${{ (milestone.amount_cents / 100).toFixed(2) }}
-            </p>
-            <p class="text-sm">Status: {{ milestone.status }}</p>
+        <div v-if="editingMilestoneId === milestone.id" class="space-y-3">
+          <input
+            v-model="editForm.title"
+            class="form-input"
+            placeholder="Milestone title"
+          />
+
+          <textarea
+            v-model="editForm.description"
+            class="form-input"
+            placeholder="Milestone description"
+          />
+
+          <input
+            v-model.number="editForm.amount_cents"
+            type="number"
+            class="form-input"
+            placeholder="Amount in cents"
+          />
+
+          <div class="milestone-actions">
+            <button
+              class="form-button"
+              type="button"
+              @click="saveMilestone(milestone.id)"
+            >
+              Save Changes
+            </button>
+
+            <button
+              class="form-button secondary-button"
+              type="button"
+              @click="cancelEditing"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+
+        <div v-else class="space-y-3">
+          <div class="flex items-center justify-between gap-4">
+            <h3 class="text-xl font-semibold text-white">
+              {{ milestone.title }}
+            </h3>
+
+            <span class="status-pill">
+              {{ milestone.status }}
+            </span>
           </div>
 
-          <div class="flex gap-2 items-start">
-            <button class="btn" @click="submit(milestone.id)">Submit</button>
-            <button class="btn" @click="approve(milestone.id)">Approve</button>
-            <button class="btn" @click="markPaid(milestone.id)">
+          <p class="text-slate-300">
+            {{ milestone.description || 'No description provided.' }}
+          </p>
+
+          <p class="text-cyan-200 font-semibold">
+            ${{ (milestone.amount_cents / 100).toFixed(2) }}
+          </p>
+
+          <div class="milestone-actions">
+            <button
+              v-if="milestone.status !== 'paid'"
+              class="form-button"
+              type="button"
+              @click="startEditing(milestone)"
+            >
+              Edit
+            </button>
+
+            <button
+              v-if="milestone.status === 'pending'"
+              class="form-button"
+              type="button"
+              @click="submit(milestone.id)"
+            >
+              Submit
+            </button>
+
+            <button
+              v-if="milestone.status === 'submitted'"
+              class="form-button"
+              type="button"
+              @click="approve(milestone.id)"
+            >
+              Approve
+            </button>
+
+            <button
+              v-if="milestone.status === 'approved'"
+              class="form-button"
+              type="button"
+              @click="markPaid(milestone.id)"
+            >
               Mark Paid
+            </button>
+
+            <button
+              v-if="
+                milestone.status === 'approved' || milestone.status === 'paid'
+              "
+              class="form-button secondary-button"
+              type="button"
+              @click="reopen(milestone.id)"
+            >
+              Reopen
             </button>
           </div>
         </div>
       </div>
     </section>
-  </main>
+  </DashboardShell>
 </template>

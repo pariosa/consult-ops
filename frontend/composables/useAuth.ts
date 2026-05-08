@@ -1,4 +1,3 @@
-import { navigateTo, useRouter } from 'nuxt/app';
 import { computed, ref } from 'vue';
 
 type AuthRole = 'admin' | 'consultant' | 'client';

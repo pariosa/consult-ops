@@ -6,6 +6,7 @@
       <label class="form-label">Client</label>
       <select v-model.number="form.client_id" class="form-input" required>
         <option disabled :value="0">Select client</option>
+
         <option v-for="client in clients" :key="client.id" :value="client.id">
           {{ client.name
           }}{{ client.company_name ? ` — ${client.company_name}` : '' }}
@@ -33,46 +34,46 @@
       />
     </div>
 
+    <p v-if="error" class="form-error">
+      {{ error }}
+    </p>
+
     <button class="form-button" type="submit">Save Project</button>
   </form>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from 'vue';
-import { useApi } from '~/composables/useApi';
-import { useClients } from '~/composables/useClients';
+import { computed, reactive, ref, watch } from 'vue';
+
+const props = defineProps<{
+  clients?: any[];
+  modelValue?: any;
+}>();
 
 const emit = defineEmits<{
   submit: [payload: any];
 }>();
 
-const props = defineProps<{
-  modelValue?: any;
-}>();
+const error = ref('');
 
-const { get } = useApi();
-const { getOrganizationClients } = useClients();
-
-const clients = ref<any[]>([]);
+const clients = computed(() => props.clients ?? []);
 
 const form = reactive({
-  client_id: props.modelValue?.client_id ?? 0,
+  client_id: props.modelValue?.client_id ?? props.clients?.[0]?.id ?? 0,
   name: props.modelValue?.name ?? '',
   start_date: props.modelValue?.start_date ?? '',
   end_date: props.modelValue?.end_date ?? '',
   description: props.modelValue?.description ?? '',
 });
 
-async function loadClients() {
-  const organization = await get('/api/me/organization');
-  clients.value = await getOrganizationClients(organization.id);
-
-  if (!form.client_id && clients.value.length) {
-    form.client_id = clients.value[0].id;
-  }
-}
-
 function submit() {
+  error.value = '';
+
+  if (!form.client_id) {
+    error.value = 'Select a client before creating a project.';
+    return;
+  }
+
   emit('submit', { ...form });
 }
 
@@ -85,7 +86,15 @@ watch(
   { deep: true },
 );
 
-onMounted(loadClients);
+watch(
+  () => props.clients,
+  (value) => {
+    if (!form.client_id && value?.length) {
+      form.client_id = value[0].id;
+    }
+  },
+  { deep: true, immediate: true },
+);
 </script>
 
 <style scoped>

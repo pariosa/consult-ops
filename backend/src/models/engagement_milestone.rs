@@ -22,6 +22,14 @@ pub struct CreateEngagementMilestone {
     pub due_date: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct UpdateEngagementMilestoneRequest {
+    pub title: String,
+    pub description: Option<String>,
+    pub amount_cents: Option<i64>,
+    pub due_date: Option<String>,
+}
+
 #[derive(Debug, serde::Deserialize)]
 pub struct CreateEngagementMilestoneRequest {
     pub title: String,
@@ -69,6 +77,45 @@ impl EngagementMilestone {
             "UPDATE engagement_milestones SET status = ? WHERE id = ? RETURNING *",
         )
         .bind(status)
+        .bind(id)
+        .fetch_one(db)
+        .await
+    }
+    pub async fn update(
+        db: &SqlitePool,
+        id: i64,
+        input: UpdateEngagementMilestoneRequest,
+    ) -> SqlxResult<Self> {
+        sqlx::query_as::<_, EngagementMilestone>(
+            r#"
+        UPDATE engagement_milestones
+        SET
+            title = ?,
+            description = ?,
+            amount_cents = ?,
+            due_date = ?
+        WHERE id = ?
+        RETURNING *
+        "#,
+        )
+        .bind(input.title)
+        .bind(input.description)
+        .bind(input.amount_cents.unwrap_or(0))
+        .bind(input.due_date)
+        .bind(id)
+        .fetch_one(db)
+        .await
+    }
+
+    pub async fn reopen(db: &SqlitePool, id: i64) -> SqlxResult<Self> {
+        sqlx::query_as::<_, EngagementMilestone>(
+            r#"
+        UPDATE engagement_milestones
+        SET status = 'pending'
+        WHERE id = ?
+        RETURNING *
+        "#,
+        )
         .bind(id)
         .fetch_one(db)
         .await

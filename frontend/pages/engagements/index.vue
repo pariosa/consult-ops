@@ -207,12 +207,8 @@ onMounted(loadProjects);
       </div>
 
       <label v-if="clients.length" class="form-label">
-        Client
-        <select v-model.number="selectedClientId" class="form-input">
-          <option v-for="client in clients" :key="client.id" :value="client.id">
-            {{ client.name }}{{ client.company ? ` — ${client.company}` : '' }}
-          </option>
-        </select>
+        You have existing Clients, add a Project to create Engagement, or add
+        another client by clicking above.
       </label>
 
       <div v-else class="empty-state">
@@ -244,16 +240,8 @@ onMounted(loadProjects);
 
       <div v-else-if="hasProjects">
         <label class="form-label">
-          Project
-          <select v-model.number="selectedProjectId" class="form-input">
-            <option
-              v-for="project in projects"
-              :key="project.id"
-              :value="project.id"
-            >
-              {{ project.name }}
-            </option>
-          </select>
+          You have existing Projects, click above to add a new project, or click
+          below to create an Engagment for the project.
         </label>
 
         <button
@@ -277,7 +265,7 @@ onMounted(loadProjects);
     <section v-if="showCreateProject" class="portal-section">
       <ProjectForm
         v-model="projectForm"
-        :client-id="selectedClientId"
+        :clients="clients"
         @submit="submitProject"
       />
     </section>
@@ -288,6 +276,7 @@ onMounted(loadProjects);
     >
       <SoftwareEngagementForm
         v-model="engagementForm"
+        :projects="projects"
         @submit="submitEngagement"
       />
     </section>

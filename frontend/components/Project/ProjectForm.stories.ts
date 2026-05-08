@@ -7,6 +7,12 @@ const meta: Meta<typeof ProjectForm> = {
   parameters: {
     layout: 'centered',
   },
+  args: {
+    clients: [
+      { id: 1, name: 'Atlas Client', company_name: 'Atlas Studio' },
+      { id: 2, name: 'Ribbert Industries', company_name: 'Ribbert Labs' },
+    ],
+  },
 };
 
 export default meta;

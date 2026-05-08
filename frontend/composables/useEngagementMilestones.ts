@@ -18,11 +18,25 @@ export function useEngagementMilestones() {
   const markMilestonePaid = (id: number) =>
     api.post(`/api/milestones/${id}/mark-paid`, {});
 
+  async function updateMilestone(id: number, payload: any) {
+    return api.patch(`/api/engagements/milestones/${id}`, {
+      method: 'PATCH',
+      body: payload,
+    });
+  }
+
+  async function reopenMilestone(id: number) {
+    return api.get(`/api/engagements/milestones/${id}/reopen`, {
+      method: 'POST',
+    });
+  }
   return {
     getMilestones,
     createMilestone,
     submitMilestone,
     approveMilestone,
     markMilestonePaid,
+    updateMilestone,
+    reopenMilestone,
   };
 }

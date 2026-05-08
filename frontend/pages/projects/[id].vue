@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { useRoute, useRouter } from 'vue-router';
 import { useProjects } from '~/composables/useProjects';
 import { useEngagements } from '~/composables/useEngagements';
 

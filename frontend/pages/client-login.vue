@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { navigateTo } from 'nuxt/app';
 import { ref } from 'vue';
 import LoginForm from '~/components/LoginForm.vue';
 import { getPortalRoute } from '~/utils/authRedirect';
