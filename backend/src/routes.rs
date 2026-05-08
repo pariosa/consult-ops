@@ -1,5 +1,4 @@
 use crate::auth::{forgot_password, login, register, reset_password};
-use crate::handlers::engagement_milestone::reopen_engagement_milestone;
 use crate::handlers::{
     activate_engagement, approve_engagement_milestone, cancel_engagement, complete_engagement,
     create_client, create_contract, create_engagement_milestone, create_for_project,
@@ -12,11 +11,10 @@ use crate::handlers::{
     get_organization_projects, get_payments, get_project_portal_summary, get_projects,
     get_user_by_id, get_users, list_engagement_events, list_engagement_milestones,
     list_for_project, list_organization_events, mark_contract_sent, mark_engagement_milestone_paid,
-    mark_signed, show, submit_engagement_milestone, update_organization,
-    update_organization_member, update_user_type,
+    mark_signed, reopen_engagement_milestone, show, submit_engagement_milestone,
+    update_engagement_milestone, update_organization, update_organization_member, update_user_type,
 };
 use actix_web::web;
-use backend::handlers::engagement_milestone::update_engagement_milestone;
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api")

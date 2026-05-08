@@ -11,6 +11,7 @@ pub struct EngagementMilestone {
     pub due_date: Option<String>,
     pub status: String,
     pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -48,9 +49,10 @@ impl EngagementMilestone {
                 amount_cents,
                 due_date,
                 status,
-                created_at
+                created_at,
+                updated_at,
             )
-            VALUES (?, ?, ?, ?, ?, 'pending', datetime('now'))
+            VALUES (?, ?, ?, ?, ?, 'pending', datetime('now'), datetime('now'))
             RETURNING *
             "#,
         )
@@ -93,7 +95,8 @@ impl EngagementMilestone {
             title = ?,
             description = ?,
             amount_cents = ?,
-            due_date = ?
+            due_date = ?,
+            updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
         RETURNING *
         "#,
@@ -112,8 +115,10 @@ impl EngagementMilestone {
             r#"
         UPDATE engagement_milestones
         SET status = 'pending'
+        SET updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
         RETURNING *
+
         "#,
         )
         .bind(id)

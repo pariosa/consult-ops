@@ -166,7 +166,8 @@ CREATE TABLE IF NOT EXISTS engagement_milestones (
     amount_cents INTEGER NOT NULL DEFAULT 0,
     due_date TEXT,
     status TEXT NOT NULL DEFAULT 'pending',
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 -- engagement billing table
 CREATE TABLE IF NOT EXISTS engagement_billing (

@@ -25,7 +25,7 @@ export const useApi = () => {
       ...options,
     });
 
-  // ✅ POST (what you asked for)
+  // ✅ POST
   const post = <T>(path: string, body: any = {}, options: any = {}) =>
     apiFetch<T>(path, {
       method: 'POST',

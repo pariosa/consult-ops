@@ -26,7 +26,11 @@ pub use engagement::{
     activate_engagement, cancel_engagement, complete_engagement, create_for_project,
     dispute_engagement, list_for_project, mark_contract_sent, mark_signed, show,
 };
-pub use engagement_milestone::*;
+pub use engagement_milestone::{
+    approve_engagement_milestone, create_engagement_milestone, list_engagement_milestones,
+    mark_engagement_milestone_paid, reopen_engagement_milestone, submit_engagement_milestone,
+    update_engagement_milestone,
+};
 pub use software_contract::generate_for_engagement;
 pub use stripe_engagement_handler::*;
 // src/handlers/mod.rs
