@@ -94,15 +94,14 @@ onMounted(refresh);
     </section>
 
     <template v-else>
-      <section class="portal-section">
+      <section class="portal-section engagement-hero">
         <p class="eyebrow">Software Engagement</p>
         <h2>{{ engagement.title }}</h2>
-        <p>
+        <p class="contractor-line">
           {{ engagement.contractor_name }} — {{ engagement.contractor_email }}
         </p>
-        <p>{{ engagement.scope_of_work }}</p>
+        <p class="scope-line">{{ engagement.scope_of_work }}</p>
       </section>
-
       <EngagementTracker
         :status="engagement.status"
         :platform-fee-status="engagement.platform_fee_status"
@@ -162,3 +161,127 @@ onMounted(refresh);
     </template>
   </DashboardShell>
 </template>
+
+<style scoped>
+.portal-section {
+  border: 1px solid rgba(45, 212, 191, 0.22);
+  border-radius: 18px;
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.96),
+    rgba(2, 12, 23, 0.96)
+  );
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+  color: #e5eefc;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.portal-section h2,
+.portal-section h3 {
+  color: #f8fafc;
+  margin: 0 0 10px;
+  letter-spacing: -0.02em;
+}
+
+.portal-section p,
+.portal-section div {
+  color: #cbd5e1;
+}
+
+.eyebrow {
+  color: #67e8f9;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.action-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.form-button,
+.milestone-actions button {
+  width: 100%;
+  border: 0;
+  border-radius: 12px;
+  background: linear-gradient(90deg, #60a5fa, #34d399);
+  color: #04111f;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 14px 18px;
+  transition:
+    transform 0.14s ease,
+    box-shadow 0.14s ease,
+    filter 0.14s ease;
+}
+
+.form-button:hover,
+.milestone-actions button:hover {
+  box-shadow: 0 14px 30px rgba(52, 211, 153, 0.18);
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+.section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.section-header h2 {
+  margin-bottom: 6px;
+}
+
+.ops-card {
+  border: 1px solid rgba(45, 212, 191, 0.2);
+  border-radius: 16px;
+  background: rgba(8, 31, 42, 0.86);
+  padding: 18px;
+}
+
+.milestone-row {
+  display: grid;
+  gap: 18px;
+  margin-top: 14px;
+}
+
+.milestone-row h3 {
+  font-size: 1.05rem;
+}
+
+.milestone-row p {
+  margin: 7px 0;
+  line-height: 1.55;
+}
+
+.milestone-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.form-error {
+  border: 1px solid rgba(248, 113, 113, 0.38);
+  border-radius: 14px;
+  background: rgba(127, 29, 29, 0.24);
+  color: #fecaca;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+@media (min-width: 760px) {
+  .action-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .milestone-row {
+    grid-template-columns: 1fr 240px;
+    align-items: center;
+  }
+}
+</style>

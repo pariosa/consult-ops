@@ -50,7 +50,7 @@ impl EngagementMilestone {
                 due_date,
                 status,
                 created_at,
-                updated_at,
+                updated_at
             )
             VALUES (?, ?, ?, ?, ?, 'pending', datetime('now'), datetime('now'))
             RETURNING *

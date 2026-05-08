@@ -159,24 +159,34 @@ async function submitClient(payload: any) {
     error.value = err?.message || 'Failed to create client.';
   }
 }
-async function submitEngagement() {
+async function submitEngagement(payload?: any) {
   if (!selectedProjectId.value) {
     error.value = 'Select a project before creating an engagement.';
     return;
   }
 
+  const body = payload ?? engagementForm.value;
+
   try {
-    const created = await createEngagement(
-      selectedProjectId.value,
-      engagementForm.value,
-    );
+    console.log('creating engagement payload', body);
+
+    const created = await createEngagement(selectedProjectId.value, {
+      contractor_name: body.contractor_name,
+      contractor_email: body.contractor_email,
+      role: body.role,
+      title: body.title,
+      scope_of_work: body.scope_of_work,
+      deliverables: body.deliverables,
+      repo_url: body.repo_url,
+      amount_cents: Number(body.amount_cents ?? 0),
+      due_date: body.due_date || null,
+    });
 
     await router.push(`/engagements/${created.id}`);
   } catch (err: any) {
     error.value = err?.message || 'Failed to create engagement.';
   }
 }
-
 watch(selectedProjectId, loadEngagements);
 
 onMounted(loadProjects);
@@ -324,3 +334,50 @@ onMounted(loadProjects);
     </section>
   </DashboardShell>
 </template>
+<style scoped>
+.portal-section {
+  color: #e5eefc;
+}
+
+.portal-section h2,
+.portal-section h3,
+.portal-section p,
+.form-label {
+  color: #e5eefc;
+}
+
+.eyebrow {
+  color: #67e8f9;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.empty-state {
+  color: #cbd5e1;
+}
+
+.engagement-row {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.engagement-row h3 {
+  margin: 0 0 0.5rem;
+  color: #f8fafc;
+}
+
+.engagement-row p {
+  margin: 0.25rem 0;
+  color: #cbd5e1;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+</style>
