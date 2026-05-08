@@ -1,10 +1,12 @@
 mod auth;
 mod auth_context;
 mod db;
+mod domain;
 mod handlers;
 mod models;
 mod routes;
 mod seed_demo;
+mod services;
 
 use actix_cors::Cors;
 use actix_web::{App, HttpServer, web};

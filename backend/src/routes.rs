@@ -1,17 +1,19 @@
 use crate::auth::{forgot_password, login, register, reset_password};
 use crate::handlers::engagement_milestone::reopen_engagement_milestone;
 use crate::handlers::{
-    approve_engagement_milestone, create_client, create_contract, create_engagement_milestone,
-    create_for_project, create_invoice, create_organization_client, create_organization_member,
+    activate_engagement, approve_engagement_milestone, cancel_engagement, complete_engagement,
+    create_client, create_contract, create_engagement_milestone, create_for_project,
+    create_invoice, create_organization_client, create_organization_member,
     create_organization_project, create_payment, create_project, create_user,
-    delete_organization_member, generate_for_engagement, get_admin_summary,
+    delete_organization_member, dispute_engagement, generate_for_engagement, get_admin_summary,
     get_client_portal_summary, get_clients, get_contracts, get_invoices, get_me,
     get_my_organization, get_organization, get_organization_clients, get_organization_contracts,
     get_organization_invoices, get_organization_members, get_organization_payments,
     get_organization_projects, get_payments, get_project_portal_summary, get_projects,
-    get_user_by_id, get_users, list_engagement_milestones, list_for_project, mark_contract_sent,
-    mark_engagement_milestone_paid, mark_signed, show, submit_engagement_milestone,
-    update_organization, update_organization_member, update_user_type,
+    get_user_by_id, get_users, list_engagement_events, list_engagement_milestones,
+    list_for_project, list_organization_events, mark_contract_sent, mark_engagement_milestone_paid,
+    mark_signed, show, submit_engagement_milestone, update_organization,
+    update_organization_member, update_user_type,
 };
 use actix_web::web;
 use backend::handlers::engagement_milestone::update_engagement_milestone;
@@ -150,6 +152,30 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route(
                 "/engagements/{id}/software-contract",
                 web::post().to(generate_for_engagement),
+            )
+            .route(
+                "/engagements/{id}/events",
+                web::get().to(list_engagement_events),
+            )
+            .route(
+                "/organizations/{id}/events",
+                web::get().to(list_organization_events),
+            )
+            .route(
+                "/engagements/{id}/activate",
+                web::post().to(activate_engagement),
+            )
+            .route(
+                "/engagements/{id}/complete",
+                web::post().to(complete_engagement),
+            )
+            .route(
+                "/engagements/{id}/cancel",
+                web::post().to(cancel_engagement),
+            )
+            .route(
+                "/engagements/{id}/dispute",
+                web::post().to(dispute_engagement),
             ),
     );
 }

@@ -153,8 +153,9 @@ CREATE TABLE IF NOT EXISTS engagements (
     platform_fee_status TEXT NOT NULL DEFAULT 'pending',
     contract_id INTEGER,
     invoice_id INTEGER,
-    payment_id INTEGER,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    payment_id INTEGER, 
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 --engagement milestones table
 CREATE TABLE IF NOT EXISTS engagement_milestones (
@@ -180,4 +181,19 @@ CREATE TABLE IF NOT EXISTS engagement_billing (
     stripe_payment_intent_id TEXT,
     paid_at TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- operational events table
+CREATE TABLE IF NOT EXISTS operational_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id INTEGER NOT NULL,
+    actor_user_id INTEGER NULL,
+    entity_type TEXT NOT NULL,
+    entity_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    from_status TEXT NULL,
+    to_status TEXT NULL,
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

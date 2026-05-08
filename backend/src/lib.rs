@@ -1,7 +1,9 @@
 pub mod auth;
 pub mod auth_context;
 pub mod db;
+pub mod domain;
 pub mod handlers;
 pub mod models;
 pub mod seed_demo;
+pub mod services;
 pub mod utils;

@@ -1,8 +1,17 @@
-use actix_web::{HttpResponse, Responder, web};
-
 use crate::db::Db;
+use crate::domain::engagement_state::{EngagementEvent, EngagementStatus};
 use crate::models::engagement::{CreateEngagement, CreateEngagementRequest, Engagement};
+use crate::services::operations_kernel_service::OperationsKernelService;
+use actix_web::{HttpResponse, Responder, web};
+use sqlx::SqlitePool;
 
+#[derive(Debug, serde::Serialize)]
+struct EngagementLifecycleResponse {
+    id: i64,
+    organization_id: i64,
+    project_id: i64,
+    status: String,
+}
 pub async fn list_for_project(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
     let project_id = path.into_inner();
 
@@ -76,9 +85,135 @@ pub async fn mark_contract_sent(db: web::Data<Db>, path: web::Path<i64>) -> impl
     }
 }
 
-pub async fn mark_signed(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
-    match Engagement::update_status(&db.pool, path.into_inner(), "contract_signed").await {
+async fn apply_engagement_lifecycle_event(
+    pool: web::Data<SqlitePool>,
+    engagement_id: i64,
+    actor_user_id: Option<i64>,
+    event: EngagementEvent,
+) -> HttpResponse {
+    let engagement = match sqlx::query!(
+        r#"
+        SELECT id, organization_id, status
+        FROM engagements
+        WHERE id = $1
+        "#,
+        engagement_id
+    )
+    .fetch_optional(pool.get_ref())
+    .await
+    {
+        Ok(Some(engagement)) => engagement,
+        Ok(None) => {
+            return HttpResponse::NotFound().json(serde_json::json!({
+                "error": "Engagement not found"
+            }));
+        }
+        Err(err) => {
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": err.to_string()
+            }));
+        }
+    };
+
+    let current_status: EngagementStatus =
+        match serde_json::from_value(serde_json::Value::String(engagement.status.clone())) {
+            Ok(status) => status,
+            Err(_) => {
+                return HttpResponse::BadRequest().json(serde_json::json!({
+                    "error": format!("Invalid engagement status in database: {}", engagement.status)
+                }));
+            }
+        };
+
+    let next_status = match OperationsKernelService::apply_engagement_event(
+        pool.get_ref(),
+        engagement.organization_id,
+        engagement.id,
+        actor_user_id,
+        current_status,
+        event,
+    )
+    .await
+    {
+        Ok(status) => status,
+        Err(err) => {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "error": err
+            }));
+        }
+    };
+
+    let next_status_string = serde_json::to_value(next_status)
+        .ok()
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| format!("{:?}", next_status).to_lowercase());
+
+    let updated = sqlx::query_as!(
+        EngagementLifecycleResponse,
+        r#"
+    UPDATE engagements
+    SET status = $1
+    WHERE id = $2
+    RETURNING 
+        id as "id!",
+        organization_id as "organization_id!",
+        project_id as "project_id!",
+        status as "status!"
+    "#,
+        next_status_string,
+        engagement_id
+    )
+    .fetch_one(pool.get_ref())
+    .await;
+
+    match updated {
         Ok(engagement) => HttpResponse::Ok().json(engagement),
-        Err(err) => HttpResponse::InternalServerError().body(err.to_string()),
+        Err(err) => HttpResponse::InternalServerError().json(serde_json::json!({
+            "error": err.to_string()
+        })),
     }
+}
+
+pub async fn mark_signed(pool: web::Data<SqlitePool>, path: web::Path<i64>) -> impl Responder {
+    let engagement_id = path.into_inner();
+
+    apply_engagement_lifecycle_event(pool, engagement_id, None, EngagementEvent::ContractSigned)
+        .await
+}
+
+pub async fn complete_engagement(
+    pool: web::Data<SqlitePool>,
+    path: web::Path<i64>,
+) -> impl Responder {
+    let engagement_id = path.into_inner();
+
+    apply_engagement_lifecycle_event(pool, engagement_id, None, EngagementEvent::Complete).await
+}
+
+pub async fn dispute_engagement(
+    pool: web::Data<SqlitePool>,
+    path: web::Path<i64>,
+) -> impl Responder {
+    let engagement_id = path.into_inner();
+
+    apply_engagement_lifecycle_event(pool, engagement_id, None, EngagementEvent::Dispute).await
+}
+
+pub async fn activate_engagement(
+    pool: web::Data<SqlitePool>,
+    path: web::Path<i64>,
+) -> impl Responder {
+    let engagement_id = path.into_inner();
+
+    apply_engagement_lifecycle_event(pool, engagement_id, None, EngagementEvent::PaymentReceived)
+        .await
+}
+
+pub async fn cancel_engagement(
+    pool: web::Data<SqlitePool>,
+    path: web::Path<i64>,
+) -> impl Responder {
+    let engagement_id = path.into_inner();
+
+    apply_engagement_lifecycle_event(pool, engagement_id, None, EngagementEvent::Cancel).await
 }

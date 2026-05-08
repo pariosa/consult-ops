@@ -15,7 +15,9 @@ uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 jsonwebtoken = "9"
 pdfium-render = "0.9"
-async-stripe = { version = "1.0.0-rc.3", features = ["default"] }
+async-stripe = { version = "1.0.0-rc.3", features = ["default"] } 
+stripe-checkout = { package = "async-stripe-checkout", version = "1.0.0-rc.3", features = ["checkout_session"] }
+stripe-shared = { package = "async-stripe-shared", version = "1.0.0-rc.3" }
 tokio = { version = "1", features = ["full"] }
 rand_core = "0.10.0"
 rand = "0.8" 
