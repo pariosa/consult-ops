@@ -113,6 +113,14 @@ pub fn config(cfg: &mut web::ServiceConfig) {
                 "/debug/projects/{project_id}/engagements",
                 web::get().to(list_for_project),
             )
+            .route(
+                "/engagements/{id}/events",
+                web::get().to(list_engagement_events),
+            )
+            .route(
+                "/organizations/{id}/events",
+                web::get().to(list_organization_events),
+            )
             .route("/engagements/{id}", web::get().to(show))
             .route(
                 "/engagements/{id}/mark-contract-sent",
@@ -150,14 +158,6 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route(
                 "/engagements/{id}/software-contract",
                 web::post().to(generate_for_engagement),
-            )
-            .route(
-                "/engagements/{id}/events",
-                web::get().to(list_engagement_events),
-            )
-            .route(
-                "/organizations/{id}/events",
-                web::get().to(list_organization_events),
             )
             .route(
                 "/engagements/{id}/activate",

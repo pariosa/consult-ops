@@ -5,7 +5,11 @@ import { useEngagementMilestones } from '~/composables/useEngagementMilestones';
 import { useEngagements } from '~/composables/useEngagements';
 import EngagementTracker from '~/components/Engagements/EngagementTracker.vue';
 import SoftwareContractPreview from '~/components/Contracts/SoftwareContractPreview.vue';
+import OperationalTimeline from '~/components/Operations/OperationalTimeline.vue';
+import { useOperationalEvents } from '~/composables/useOperationalEvents';
 
+const { getEngagementEvents } = useOperationalEvents();
+const operationalEvents = ref<any[]>([]);
 const route = useRoute();
 const engagementId = Number(route.params.id);
 
@@ -33,6 +37,7 @@ async function refresh() {
   try {
     engagement.value = await getEngagement(engagementId);
     milestones.value = await getMilestones(engagementId);
+    operationalEvents.value = await getEngagementEvents(engagementId);
   } catch (err: any) {
     error.value = err?.message || 'Failed to load engagement.';
   } finally {
@@ -106,7 +111,7 @@ onMounted(refresh);
         :status="engagement.status"
         :platform-fee-status="engagement.platform_fee_status"
       />
-
+      <OperationalTimeline :events="operationalEvents" />
       <section class="portal-section action-grid">
         <button class="form-button" @click="previewContract">
           Generate Contract Preview

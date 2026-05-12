@@ -5,7 +5,34 @@ use crate::models::engagement_milestone::{
     CreateEngagementMilestone, CreateEngagementMilestoneRequest, EngagementMilestone,
     UpdateEngagementMilestoneRequest,
 };
+use crate::services::event_service::EventService;
 
+async fn organization_id_for_milestone(db: &Db, milestone_id: i64) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar!(
+        r#"
+        SELECT e.organization_id as "organization_id!"
+        FROM engagement_milestones m
+        JOIN engagements e ON e.id = m.engagement_id
+        WHERE m.id = $1
+        "#,
+        milestone_id
+    )
+    .fetch_one(db.pool.as_ref())
+    .await
+}
+
+async fn engagement_id_for_milestone(db: &Db, milestone_id: i64) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar!(
+        r#"
+        SELECT engagement_id as "engagement_id!"
+        FROM engagement_milestones
+        WHERE id = $1
+        "#,
+        milestone_id
+    )
+    .fetch_one(db.pool.as_ref())
+    .await
+}
 /// CREATE milestone for engagement
 pub async fn create_engagement_milestone(
     db: web::Data<Db>,
@@ -24,7 +51,40 @@ pub async fn create_engagement_milestone(
     };
 
     match EngagementMilestone::create(db.pool.as_ref(), milestone).await {
-        Ok(milestone) => HttpResponse::Created().json(milestone),
+        Ok(milestone) => {
+            let organization_id = sqlx::query_scalar!(
+                r#"
+        SELECT organization_id as "organization_id!"
+        FROM engagements
+        WHERE id = $1
+        "#,
+                milestone.engagement_id
+            )
+            .fetch_one(db.pool.as_ref())
+            .await
+            .unwrap_or(0);
+
+            if organization_id != 0 {
+                let _ = EventService::record_event(
+                    db.pool.as_ref(),
+                    organization_id,
+                    None,
+                    "milestone",
+                    milestone.id,
+                    "MilestoneCreated",
+                    None,
+                    Some(&milestone.status),
+                    serde_json::json!({
+                        "engagement_id": milestone.engagement_id,
+                        "title": milestone.title,
+                        "amount_cents": milestone.amount_cents
+                    }),
+                )
+                .await;
+            }
+
+            HttpResponse::Created().json(milestone)
+        }
         Err(err) => {
             eprintln!("create_engagement_milestone error: {:?}", err);
             HttpResponse::InternalServerError().body(err.to_string())
@@ -59,7 +119,26 @@ pub async fn submit_engagement_milestone(
     println!("Submitting milestone_id: {}", milestone_id);
 
     match EngagementMilestone::update_status(db.pool.as_ref(), milestone_id, "submitted").await {
-        Ok(item) => HttpResponse::Ok().json(item),
+        Ok(item) => {
+            if let Ok(organization_id) = organization_id_for_milestone(&db, milestone_id).await {
+                let _ = EventService::record_event(
+                    db.pool.as_ref(),
+                    organization_id,
+                    None,
+                    "milestone",
+                    milestone_id,
+                    "MilestoneSubmitted",
+                    None,
+                    Some("submitted"),
+                    serde_json::json!({
+                        "engagement_id": item.engagement_id
+                    }),
+                )
+                .await;
+            }
+
+            HttpResponse::Ok().json(item)
+        }
 
         Err(err) => {
             eprintln!("submit_engagement_milestone error: {:?}", err);
@@ -79,7 +158,26 @@ pub async fn approve_engagement_milestone(
     println!("Approving milestone_id: {}", milestone_id);
 
     match EngagementMilestone::update_status(db.pool.as_ref(), milestone_id, "approved").await {
-        Ok(item) => HttpResponse::Ok().json(item),
+        Ok(item) => {
+            if let Ok(organization_id) = organization_id_for_milestone(&db, milestone_id).await {
+                let _ = EventService::record_event(
+                    db.pool.as_ref(),
+                    organization_id,
+                    None,
+                    "milestone",
+                    milestone_id,
+                    "MilestoneApproved",
+                    None,
+                    Some("approved"),
+                    serde_json::json!({
+                        "engagement_id": item.engagement_id
+                    }),
+                )
+                .await;
+            }
+
+            HttpResponse::Ok().json(item)
+        }
 
         Err(err) => {
             eprintln!("approve_engagement_milestone error: {:?}", err);
@@ -99,7 +197,26 @@ pub async fn mark_engagement_milestone_paid(
     println!("Marking milestone paid: {}", milestone_id);
 
     match EngagementMilestone::update_status(db.pool.as_ref(), milestone_id, "paid").await {
-        Ok(item) => HttpResponse::Ok().json(item),
+        Ok(item) => {
+            if let Ok(organization_id) = organization_id_for_milestone(&db, milestone_id).await {
+                let _ = EventService::record_event(
+                    db.pool.as_ref(),
+                    organization_id,
+                    None,
+                    "milestone",
+                    milestone_id,
+                    "MilestonePaid",
+                    None,
+                    Some("paid"),
+                    serde_json::json!({
+                        "engagement_id": item.engagement_id
+                    }),
+                )
+                .await;
+            }
+
+            HttpResponse::Ok().json(item)
+        }
 
         Err(err) => {
             eprintln!("mark_engagement_milestone_paid error: {:?}", err);
@@ -140,7 +257,26 @@ pub async fn reopen_engagement_milestone(
     println!("Reopening milestone_id: {}", milestone_id);
 
     match EngagementMilestone::reopen(db.pool.as_ref(), milestone_id).await {
-        Ok(item) => HttpResponse::Ok().json(item),
+        Ok(item) => {
+            if let Ok(organization_id) = organization_id_for_milestone(&db, milestone_id).await {
+                let _ = EventService::record_event(
+                    db.pool.as_ref(),
+                    organization_id,
+                    None,
+                    "milestone",
+                    milestone_id,
+                    "MilestoneReopened",
+                    None,
+                    Some(&item.status),
+                    serde_json::json!({
+                        "engagement_id": item.engagement_id
+                    }),
+                )
+                .await;
+            }
+
+            HttpResponse::Ok().json(item)
+        }
 
         Err(err) => {
             eprintln!("reopen_engagement_milestone error: {:?}", err);

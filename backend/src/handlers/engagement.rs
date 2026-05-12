@@ -3,7 +3,6 @@ use crate::domain::engagement_state::{EngagementEvent, EngagementStatus};
 use crate::models::engagement::{CreateEngagement, CreateEngagementRequest, Engagement};
 use crate::services::operations_kernel_service::OperationsKernelService;
 use actix_web::{HttpResponse, Responder, web};
-use sqlx::SqlitePool;
 
 #[derive(Debug, serde::Serialize)]
 struct EngagementLifecycleResponse {
@@ -78,15 +77,8 @@ pub async fn show(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
     }
 }
 
-pub async fn mark_contract_sent(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
-    match Engagement::update_status(&db.pool, path.into_inner(), "contract_sent").await {
-        Ok(engagement) => HttpResponse::Ok().json(engagement),
-        Err(err) => HttpResponse::InternalServerError().body(err.to_string()),
-    }
-}
-
-async fn apply_engagement_lifecycle_event(
-    pool: web::Data<SqlitePool>,
+pub async fn apply_engagement_lifecycle_event(
+    db: web::Data<Db>,
     engagement_id: i64,
     actor_user_id: Option<i64>,
     event: EngagementEvent,
@@ -99,7 +91,7 @@ async fn apply_engagement_lifecycle_event(
         "#,
         engagement_id
     )
-    .fetch_optional(pool.get_ref())
+    .fetch_optional(db.pool.as_ref())
     .await
     {
         Ok(Some(engagement)) => engagement,
@@ -126,7 +118,7 @@ async fn apply_engagement_lifecycle_event(
         };
 
     let next_status = match OperationsKernelService::apply_engagement_event(
-        pool.get_ref(),
+        db.pool.as_ref(),
         engagement.organization_id,
         engagement.id,
         actor_user_id,
@@ -151,19 +143,19 @@ async fn apply_engagement_lifecycle_event(
     let updated = sqlx::query_as!(
         EngagementLifecycleResponse,
         r#"
-    UPDATE engagements
-    SET status = $1
-    WHERE id = $2
-    RETURNING 
-        id as "id!",
-        organization_id as "organization_id!",
-        project_id as "project_id!",
-        status as "status!"
-    "#,
+        UPDATE engagements
+        SET status = $1
+        WHERE id = $2
+        RETURNING
+            id as "id!",
+            organization_id as "organization_id!",
+            project_id as "project_id!",
+            status as "status!"
+        "#,
         next_status_string,
         engagement_id
     )
-    .fetch_one(pool.get_ref())
+    .fetch_one(db.pool.as_ref())
     .await;
 
     match updated {
@@ -173,47 +165,39 @@ async fn apply_engagement_lifecycle_event(
         })),
     }
 }
-
-pub async fn mark_signed(pool: web::Data<SqlitePool>, path: web::Path<i64>) -> impl Responder {
+pub async fn mark_contract_sent(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
     let engagement_id = path.into_inner();
 
-    apply_engagement_lifecycle_event(pool, engagement_id, None, EngagementEvent::ContractSigned)
+    apply_engagement_lifecycle_event(db, engagement_id, None, EngagementEvent::ContractSent).await
+}
+
+pub async fn mark_signed(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
+    let engagement_id = path.into_inner();
+
+    apply_engagement_lifecycle_event(db, engagement_id, None, EngagementEvent::ContractSigned).await
+}
+
+pub async fn activate_engagement(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
+    let engagement_id = path.into_inner();
+
+    apply_engagement_lifecycle_event(db, engagement_id, None, EngagementEvent::PaymentReceived)
         .await
 }
 
-pub async fn complete_engagement(
-    pool: web::Data<SqlitePool>,
-    path: web::Path<i64>,
-) -> impl Responder {
+pub async fn complete_engagement(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
     let engagement_id = path.into_inner();
 
-    apply_engagement_lifecycle_event(pool, engagement_id, None, EngagementEvent::Complete).await
+    apply_engagement_lifecycle_event(db, engagement_id, None, EngagementEvent::Complete).await
 }
 
-pub async fn dispute_engagement(
-    pool: web::Data<SqlitePool>,
-    path: web::Path<i64>,
-) -> impl Responder {
+pub async fn cancel_engagement(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
     let engagement_id = path.into_inner();
 
-    apply_engagement_lifecycle_event(pool, engagement_id, None, EngagementEvent::Dispute).await
+    apply_engagement_lifecycle_event(db, engagement_id, None, EngagementEvent::Cancel).await
 }
 
-pub async fn activate_engagement(
-    pool: web::Data<SqlitePool>,
-    path: web::Path<i64>,
-) -> impl Responder {
+pub async fn dispute_engagement(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
     let engagement_id = path.into_inner();
 
-    apply_engagement_lifecycle_event(pool, engagement_id, None, EngagementEvent::PaymentReceived)
-        .await
-}
-
-pub async fn cancel_engagement(
-    pool: web::Data<SqlitePool>,
-    path: web::Path<i64>,
-) -> impl Responder {
-    let engagement_id = path.into_inner();
-
-    apply_engagement_lifecycle_event(pool, engagement_id, None, EngagementEvent::Cancel).await
+    apply_engagement_lifecycle_event(db, engagement_id, None, EngagementEvent::Dispute).await
 }

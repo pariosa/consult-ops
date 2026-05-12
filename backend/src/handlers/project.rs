@@ -1,5 +1,6 @@
 use crate::db::Db;
 use crate::models::project::{CreateProject, CreateProjectRequest, Project};
+use crate::services::event_service::EventService;
 use actix_web::{HttpResponse, Responder, web};
 use chrono::Utc;
 
@@ -31,7 +32,25 @@ pub async fn create_project(
     };
 
     match Project::create(&db, new_project).await {
-        Ok(project) => HttpResponse::Ok().json(project),
+        Ok(project) => {
+            let _ = EventService::record_event(
+                db.pool.as_ref(),
+                project.organization_id,
+                None,
+                "project",
+                project.id,
+                "ProjectCreated",
+                None,
+                Some("created"),
+                serde_json::json!({
+                    "client_id": project.client_id,
+                    "name": project.name
+                }),
+            )
+            .await;
+
+            HttpResponse::Ok().json(project)
+        }
         Err(e) => {
             eprintln!("DB error: {}", e);
             HttpResponse::InternalServerError().body("Failed to create project")

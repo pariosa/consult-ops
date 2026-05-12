@@ -1,6 +1,7 @@
 use actix_web::{HttpResponse, Responder, web};
 use serde::Serialize;
-use sqlx::SqlitePool;
+
+use crate::db::Db; // adjust if your Db path is different
 
 #[derive(Debug, Serialize)]
 struct OperationalEventResponse {
@@ -16,11 +17,13 @@ struct OperationalEventResponse {
     created_at: String,
 }
 
-pub async fn list_engagement_events(
-    pool: web::Data<SqlitePool>,
-    path: web::Path<i64>,
-) -> impl Responder {
+pub async fn list_engagement_events(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
     let engagement_id = path.into_inner();
+
+    println!(
+        "Loading operational events for engagement_id: {}",
+        engagement_id
+    );
 
     let events = sqlx::query_as!(
         OperationalEventResponse,
@@ -43,22 +46,29 @@ pub async fn list_engagement_events(
         "#,
         engagement_id
     )
-    .fetch_all(pool.get_ref())
+    .fetch_all(db.pool.as_ref())
     .await;
 
     match events {
         Ok(events) => HttpResponse::Ok().json(events),
-        Err(err) => HttpResponse::InternalServerError().json(serde_json::json!({
-            "error": err.to_string()
-        })),
+        Err(err) => {
+            eprintln!("list_engagement_events error: {:?}", err);
+
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": err.to_string(),
+                "debug": format!("{:?}", err)
+            }))
+        }
     }
 }
 
-pub async fn list_organization_events(
-    pool: web::Data<SqlitePool>,
-    path: web::Path<i64>,
-) -> impl Responder {
+pub async fn list_organization_events(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
     let organization_id = path.into_inner();
+
+    println!(
+        "Loading operational events for organization_id: {}",
+        organization_id
+    );
 
     let events = sqlx::query_as!(
         OperationalEventResponse,
@@ -81,13 +91,18 @@ pub async fn list_organization_events(
         "#,
         organization_id
     )
-    .fetch_all(pool.get_ref())
+    .fetch_all(db.pool.as_ref())
     .await;
 
     match events {
         Ok(events) => HttpResponse::Ok().json(events),
-        Err(err) => HttpResponse::InternalServerError().json(serde_json::json!({
-            "error": err.to_string()
-        })),
+        Err(err) => {
+            eprintln!("list_organization_events error: {:?}", err);
+
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": err.to_string(),
+                "debug": format!("{:?}", err)
+            }))
+        }
     }
 }

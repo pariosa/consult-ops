@@ -1,4 +1,5 @@
 use crate::models::Invoice;
+use crate::services::event_service::EventService;
 use crate::{db::Db, models::invoice::CreateInvoice};
 use actix_web::{HttpResponse, Responder, web};
 
@@ -39,7 +40,27 @@ pub async fn create_invoice(db: web::Data<Db>, info: web::Json<CreateInvoice>) -
     }
 
     match Invoice::create(&db, invoice).await {
-        Ok(invoice) => HttpResponse::Ok().json(invoice),
+        Ok(invoice) => {
+            let _ = EventService::record_event(
+                db.pool.as_ref(),
+                invoice.organization_id,
+                None,
+                "invoice",
+                invoice.id,
+                "InvoiceCreated",
+                None,
+                Some(&invoice.status),
+                serde_json::json!({
+                    "contract_id": invoice.contract_id,
+                    "invoice_number": invoice.invoice_number,
+                    "total": invoice.total,
+                    "currency": invoice.currency
+                }),
+            )
+            .await;
+
+            HttpResponse::Ok().json(invoice)
+        }
         Err(e) => {
             eprintln!("DB error creating invoice: {}", e);
             HttpResponse::InternalServerError().body("Failed to create invoice")

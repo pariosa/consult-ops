@@ -52,4 +52,46 @@ impl EventService {
 
         Ok(())
     }
+
+    pub async fn record_event(
+        pool: &SqlitePool,
+        organization_id: i64,
+        actor_user_id: Option<i64>,
+        entity_type: &str,
+        entity_id: i64,
+        event_type: &str,
+        from_status: Option<&str>,
+        to_status: Option<&str>,
+        metadata: serde_json::Value,
+    ) -> Result<(), String> {
+        let metadata_json = metadata.to_string();
+        sqlx::query!(
+            r#"
+            INSERT INTO operational_events (
+                organization_id,
+                actor_user_id,
+                entity_type,
+                entity_id,
+                event_type,
+                from_status,
+                to_status,
+                metadata
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            "#,
+            organization_id,
+            actor_user_id,
+            entity_type,
+            entity_id,
+            event_type,
+            from_status,
+            to_status,
+            metadata_json
+        )
+        .execute(pool)
+        .await
+        .map_err(|err| err.to_string())?;
+
+        Ok(())
+    }
 }
