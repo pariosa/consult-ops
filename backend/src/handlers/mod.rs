@@ -1,7 +1,7 @@
 mod client;
 mod contract;
 pub mod engagement;
-mod engagement_billing;
+pub mod engagement_billing;
 pub mod engagement_milestone;
 mod invoice;
 pub mod operational_event;
@@ -33,5 +33,10 @@ pub use engagement_milestone::{
     update_engagement_milestone,
 };
 pub use software_contract::generate_for_engagement;
-pub use stripe_engagement_handler::*;
+pub use stripe_webhook::stripe_webhook;
 // src/handlers/mod.rs
+
+pub use engagement_billing::{
+    attach_checkout_session, create_activation_checkout, create_activation_fee,
+    create_engagement_billing, list_engagement_billing, mark_billing_paid,
+};

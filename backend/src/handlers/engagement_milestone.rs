@@ -7,6 +7,41 @@ use crate::models::engagement_milestone::{
 };
 use crate::services::event_service::EventService;
 
+async fn record_milestone_and_engagement_event(
+    db: &Db,
+    organization_id: i64,
+    milestone_id: i64,
+    engagement_id: i64,
+    event_type: &str,
+    to_status: Option<&str>,
+    metadata: serde_json::Value,
+) {
+    let _ = EventService::record_event(
+        db.pool.as_ref(),
+        organization_id,
+        None,
+        "milestone",
+        milestone_id,
+        event_type,
+        None,
+        to_status,
+        metadata.clone(),
+    )
+    .await;
+
+    let _ = EventService::record_event(
+        db.pool.as_ref(),
+        organization_id,
+        None,
+        "engagement",
+        engagement_id,
+        event_type,
+        None,
+        to_status,
+        metadata,
+    )
+    .await;
+}
 async fn organization_id_for_milestone(db: &Db, milestone_id: i64) -> Result<i64, sqlx::Error> {
     sqlx::query_scalar!(
         r#"
@@ -65,16 +100,15 @@ pub async fn create_engagement_milestone(
             .unwrap_or(0);
 
             if organization_id != 0 {
-                let _ = EventService::record_event(
-                    db.pool.as_ref(),
+                record_milestone_and_engagement_event(
+                    &db,
                     organization_id,
-                    None,
-                    "milestone",
                     milestone.id,
+                    milestone.engagement_id,
                     "MilestoneCreated",
-                    None,
                     Some(&milestone.status),
                     serde_json::json!({
+                        "milestone_id": milestone.id,
                         "engagement_id": milestone.engagement_id,
                         "title": milestone.title,
                         "amount_cents": milestone.amount_cents
@@ -121,20 +155,22 @@ pub async fn submit_engagement_milestone(
     match EngagementMilestone::update_status(db.pool.as_ref(), milestone_id, "submitted").await {
         Ok(item) => {
             if let Ok(organization_id) = organization_id_for_milestone(&db, milestone_id).await {
-                let _ = EventService::record_event(
-                    db.pool.as_ref(),
-                    organization_id,
-                    None,
-                    "milestone",
-                    milestone_id,
-                    "MilestoneSubmitted",
-                    None,
-                    Some("submitted"),
-                    serde_json::json!({
-                        "engagement_id": item.engagement_id
-                    }),
-                )
-                .await;
+                {
+                    record_milestone_and_engagement_event(
+                        &db,
+                        organization_id,
+                        milestone_id,
+                        item.engagement_id,
+                        "MilestoneSubmitted",
+                        Some("submitted"),
+                        serde_json::json!({
+                            "milestone_id": milestone_id,
+                            "engagement_id": item.engagement_id,
+                            "title": item.title
+                        }),
+                    )
+                    .await;
+                }
             }
 
             HttpResponse::Ok().json(item)
@@ -160,17 +196,17 @@ pub async fn approve_engagement_milestone(
     match EngagementMilestone::update_status(db.pool.as_ref(), milestone_id, "approved").await {
         Ok(item) => {
             if let Ok(organization_id) = organization_id_for_milestone(&db, milestone_id).await {
-                let _ = EventService::record_event(
-                    db.pool.as_ref(),
+                record_milestone_and_engagement_event(
+                    &db,
                     organization_id,
-                    None,
-                    "milestone",
                     milestone_id,
+                    item.engagement_id,
                     "MilestoneApproved",
-                    None,
                     Some("approved"),
                     serde_json::json!({
-                        "engagement_id": item.engagement_id
+                        "milestone_id": milestone_id,
+                        "engagement_id": item.engagement_id,
+                        "title": item.title
                     }),
                 )
                 .await;
@@ -199,22 +235,22 @@ pub async fn mark_engagement_milestone_paid(
     match EngagementMilestone::update_status(db.pool.as_ref(), milestone_id, "paid").await {
         Ok(item) => {
             if let Ok(organization_id) = organization_id_for_milestone(&db, milestone_id).await {
-                let _ = EventService::record_event(
-                    db.pool.as_ref(),
+                record_milestone_and_engagement_event(
+                    &db,
                     organization_id,
-                    None,
-                    "milestone",
                     milestone_id,
+                    item.engagement_id,
                     "MilestonePaid",
-                    None,
                     Some("paid"),
                     serde_json::json!({
-                        "engagement_id": item.engagement_id
+                        "milestone_id": milestone_id,
+                        "engagement_id": item.engagement_id,
+                        "title": item.title,
+                        "amount_cents": item.amount_cents
                     }),
                 )
                 .await;
             }
-
             HttpResponse::Ok().json(item)
         }
 
@@ -238,7 +274,28 @@ pub async fn update_engagement_milestone(
     println!("Updating milestone_id: {}", milestone_id);
 
     match EngagementMilestone::update(db.pool.as_ref(), milestone_id, input).await {
-        Ok(item) => HttpResponse::Ok().json(item),
+        Ok(item) => {
+            if let Ok(organization_id) = organization_id_for_milestone(&db, milestone_id).await {
+                record_milestone_and_engagement_event(
+                    &db,
+                    organization_id,
+                    milestone_id,
+                    item.engagement_id,
+                    "MilestoneUpdated",
+                    Some(&item.status),
+                    serde_json::json!({
+                        "milestone_id": milestone_id,
+                        "engagement_id": item.engagement_id,
+                        "title": item.title,
+                        "amount_cents": item.amount_cents,
+                        "due_date": item.due_date
+                    }),
+                )
+                .await;
+            }
+
+            HttpResponse::Ok().json(item)
+        }
 
         Err(err) => {
             eprintln!("update_engagement_milestone error: {:?}", err);
@@ -259,17 +316,19 @@ pub async fn reopen_engagement_milestone(
     match EngagementMilestone::reopen(db.pool.as_ref(), milestone_id).await {
         Ok(item) => {
             if let Ok(organization_id) = organization_id_for_milestone(&db, milestone_id).await {
-                let _ = EventService::record_event(
-                    db.pool.as_ref(),
+                record_milestone_and_engagement_event(
+                    &db,
                     organization_id,
-                    None,
-                    "milestone",
                     milestone_id,
+                    item.engagement_id,
                     "MilestoneReopened",
-                    None,
                     Some(&item.status),
                     serde_json::json!({
-                        "engagement_id": item.engagement_id
+                        "milestone_id": milestone_id,
+                        "engagement_id": item.engagement_id,
+                        "title": item.title,
+                        "amount_cents": item.amount_cents,
+                        "due_date": item.due_date
                     }),
                 )
                 .await;

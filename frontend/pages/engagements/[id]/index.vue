@@ -8,6 +8,13 @@ import SoftwareContractPreview from '~/components/Contracts/SoftwareContractPrev
 import OperationalTimeline from '~/components/Operations/OperationalTimeline.vue';
 import { useOperationalEvents } from '~/composables/useOperationalEvents';
 
+import { useEngagementBilling } from '~/composables/useEngagementBilling';
+
+const { getEngagementBilling, createActivationCheckout, markBillingPaid } =
+  useEngagementBilling();
+
+const checkoutLoading = ref(false);
+const billingItems = ref<any[]>([]);
 const { getEngagementEvents } = useOperationalEvents();
 const operationalEvents = ref<any[]>([]);
 const route = useRoute();
@@ -38,6 +45,7 @@ async function refresh() {
     engagement.value = await getEngagement(engagementId);
     milestones.value = await getMilestones(engagementId);
     operationalEvents.value = await getEngagementEvents(engagementId);
+    billingItems.value = await getEngagementBilling(engagementId);
   } catch (err: any) {
     error.value = err?.message || 'Failed to load engagement.';
   } finally {
@@ -81,6 +89,38 @@ function goToMilestones() {
 function goToBilling() {
   console.log('goToBilling clicked', engagementId);
   router.push(`/engagements/${engagementId}/billing`);
+}
+async function createActivationFeeLocal() {
+  await createActivationCheckout(engagementId);
+  await refresh();
+}
+
+async function markBillingPaidLocal(billingId: number) {
+  await markBillingPaid(billingId);
+  await refresh();
+}
+async function payActivationFee() {
+  checkoutLoading.value = true;
+  error.value = '';
+
+  try {
+    const res: any = await createActivationCheckout(engagementId);
+
+    if (res?.url) {
+      window.location.href = res.url;
+      return;
+    }
+
+    error.value =
+      'Stripe checkout session was created, but no checkout URL was returned.';
+  } catch (err: any) {
+    error.value =
+      err?.data?.error ||
+      err?.message ||
+      'Failed to start activation checkout.';
+  } finally {
+    checkoutLoading.value = false;
+  }
 }
 onMounted(refresh);
 </script>
@@ -161,6 +201,58 @@ onMounted(refresh);
             </button>
             <button @click="markPaidLocal(milestone.id)">Mark Paid</button>
           </div>
+        </div>
+      </section>
+      <section class="portal-section">
+        <div class="section-header">
+          <div>
+            <p class="eyebrow">Activation Billing</p>
+            <h2>Engagement Access</h2>
+            <p>
+              Pay the activation fee to unlock the engagement workflow and
+              record the payment in the operational timeline.
+            </p>
+          </div>
+
+          <button
+            class="form-button"
+            :disabled="checkoutLoading || engagement.status === 'active'"
+            @click="payActivationFee"
+          >
+            {{
+              checkoutLoading ? 'Starting Checkout...' : 'Pay Activation Fee'
+            }}
+          </button>
+        </div>
+
+        <div v-if="!billingItems.length" class="empty-state">
+          No activation billing record yet.
+        </div>
+
+        <div
+          v-for="billing in billingItems"
+          :key="billing.id"
+          class="ops-card billing-row"
+        >
+          <div>
+            <h3>{{ billing.billing_type }}</h3>
+            <p>Status: {{ billing.status }}</p>
+            <p>
+              Amount: ${{ (billing.amount_cents / 100).toFixed(2) }}
+              {{ billing.currency?.toUpperCase?.() || billing.currency }}
+            </p>
+            <p v-if="billing.stripe_checkout_session_id">
+              Stripe session: {{ billing.stripe_checkout_session_id }}
+            </p>
+          </div>
+
+          <button
+            v-if="billing.status !== 'paid'"
+            class="form-button secondary"
+            @click="markBillingPaidLocal(billing.id)"
+          >
+            Dev: Mark Paid
+          </button>
         </div>
       </section>
     </template>
@@ -286,6 +378,34 @@ onMounted(refresh);
 
   .milestone-row {
     grid-template-columns: 1fr 240px;
+    align-items: center;
+  }
+}
+.billing-row {
+  display: grid;
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.billing-row h3 {
+  color: #f8fafc;
+  margin: 0 0 8px;
+}
+
+.billing-row p {
+  color: #cbd5e1;
+  margin: 4px 0;
+}
+
+.form-button:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.4);
+  opacity: 0.6;
+}
+
+@media (min-width: 760px) {
+  .billing-row {
+    grid-template-columns: 1fr 220px;
     align-items: center;
   }
 }

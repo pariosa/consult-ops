@@ -15,7 +15,8 @@ uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 jsonwebtoken = "9"
 pdfium-render = "0.9"
-async-stripe = { version = "1.0.0-rc.3", features = ["default"] } 
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+async-stripe = { version = "1.0.0-rc.5", features = ["default"] }
 stripe-checkout = { package = "async-stripe-checkout", version = "1.0.0-rc.3", features = ["checkout_session"] }
 stripe-shared = { package = "async-stripe-shared", version = "1.0.0-rc.3" }
 tokio = { version = "1", features = ["full"] }
@@ -25,6 +26,7 @@ sha2 = "0.10"
 hex = "0.4"
 futures-util = "0.3"
 actix-rt= "2"
+hmac = "0.12" 
 
 [lib]
 name = "backend"

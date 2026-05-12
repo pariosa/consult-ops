@@ -1,6 +1,7 @@
 use crate::db::Db;
 use crate::domain::engagement_state::{EngagementEvent, EngagementStatus};
 use crate::models::engagement::{CreateEngagement, CreateEngagementRequest, Engagement};
+use crate::services::event_service::EventService;
 use crate::services::operations_kernel_service::OperationsKernelService;
 use actix_web::{HttpResponse, Responder, web};
 
@@ -60,9 +61,29 @@ pub async fn create_for_project(
         currency: Some(input.currency.unwrap_or_else(|| "usd".to_string())),
         due_date: input.due_date,
     };
-
     match Engagement::create(&db.pool, engagement).await {
-        Ok(engagement) => HttpResponse::Ok().json(engagement),
+        Ok(engagement) => {
+            let _ = EventService::record_event(
+                db.pool.as_ref(),
+                engagement.organization_id,
+                None,
+                "engagement",
+                engagement.id,
+                "EngagementCreated",
+                None,
+                Some(&engagement.status),
+                serde_json::json!({
+                    "project_id": engagement.project_id,
+                    "title": engagement.title,
+                    "contractor_name": engagement.contractor_name,
+                    "contractor_email": engagement.contractor_email,
+                    "amount_cents": engagement.amount_cents
+                }),
+            )
+            .await;
+
+            HttpResponse::Ok().json(engagement)
+        }
         Err(err) => {
             eprintln!("Engagement::create error: {:?}", err);
             HttpResponse::InternalServerError().body(err.to_string())

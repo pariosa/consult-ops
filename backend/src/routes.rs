@@ -1,7 +1,8 @@
 use crate::auth::{forgot_password, login, register, reset_password};
 use crate::handlers::{
-    activate_engagement, approve_engagement_milestone, cancel_engagement, complete_engagement,
-    create_client, create_contract, create_engagement_milestone, create_for_project,
+    activate_engagement, approve_engagement_milestone, attach_checkout_session, cancel_engagement,
+    complete_engagement, create_activation_checkout, create_activation_fee, create_client,
+    create_contract, create_engagement_billing, create_engagement_milestone, create_for_project,
     create_invoice, create_organization_client, create_organization_member,
     create_organization_project, create_payment, create_project, create_user,
     delete_organization_member, dispute_engagement, generate_for_engagement, get_admin_summary,
@@ -9,10 +10,11 @@ use crate::handlers::{
     get_my_organization, get_organization, get_organization_clients, get_organization_contracts,
     get_organization_invoices, get_organization_members, get_organization_payments,
     get_organization_projects, get_payments, get_project_portal_summary, get_projects,
-    get_user_by_id, get_users, list_engagement_events, list_engagement_milestones,
-    list_for_project, list_organization_events, mark_contract_sent, mark_engagement_milestone_paid,
-    mark_signed, reopen_engagement_milestone, show, submit_engagement_milestone,
-    update_engagement_milestone, update_organization, update_organization_member, update_user_type,
+    get_user_by_id, get_users, list_engagement_billing, list_engagement_events,
+    list_engagement_milestones, list_for_project, list_organization_events, mark_billing_paid,
+    mark_contract_sent, mark_engagement_milestone_paid, mark_signed, reopen_engagement_milestone,
+    show, stripe_webhook, submit_engagement_milestone, update_engagement_milestone,
+    update_organization, update_organization_member, update_user_type,
 };
 use actix_web::web;
 pub fn config(cfg: &mut web::ServiceConfig) {
@@ -102,6 +104,26 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("/payments", web::get().to(get_payments))
             .route("/payments", web::post().to(create_payment))
             .route(
+                "/engagements/{id}/billing",
+                web::get().to(list_engagement_billing),
+            )
+            .route(
+                "/engagements/{id}/billing",
+                web::post().to(create_engagement_billing),
+            )
+            .route(
+                "/engagements/{id}/activation-fee",
+                web::post().to(create_activation_fee),
+            )
+            .route(
+                "/engagement-billing/{id}/checkout-session",
+                web::patch().to(attach_checkout_session),
+            )
+            .route(
+                "/engagement-billing/{id}/mark-paid",
+                web::post().to(mark_billing_paid),
+            )
+            .route(
                 "/projects/{project_id}/engagements",
                 web::post().to(create_for_project),
             )
@@ -171,6 +193,11 @@ pub fn config(cfg: &mut web::ServiceConfig) {
                 "/engagements/{id}/cancel",
                 web::post().to(cancel_engagement),
             )
+            .route(
+                "/engagements/{id}/activation-checkout",
+                web::post().to(create_activation_checkout),
+            )
+            .route("/webhooks/stripe", web::post().to(stripe_webhook))
             .route(
                 "/engagements/{id}/dispute",
                 web::post().to(dispute_engagement),
