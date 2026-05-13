@@ -65,7 +65,8 @@ async fn setup_db() -> Db {
             contract_id INTEGER,
             invoice_id INTEGER,
             payment_id INTEGER,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         "#,
     )
@@ -83,7 +84,8 @@ async fn setup_db() -> Db {
             amount_cents INTEGER NOT NULL DEFAULT 0,
             due_date TEXT,
             status TEXT NOT NULL DEFAULT 'pending',
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         "#,
     )
@@ -104,7 +106,8 @@ async fn setup_db() -> Db {
             stripe_checkout_session_id TEXT,
             stripe_payment_intent_id TEXT,
             paid_at TEXT,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         "#,
     )
