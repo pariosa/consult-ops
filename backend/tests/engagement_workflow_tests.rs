@@ -1,9 +1,11 @@
 use actix_web::{App, test, web};
+use backend::db::Db;
+use backend::domain::engagement_state::EngagementEvent;
+use backend::domain::engagement_state::EngagementStatus;
+use backend::handlers::{engagement, engagement_milestone, software_contract};
+use backend::services::operations_kernel_service::OperationsKernelService;
 use serde_json::json;
 use sqlx::{Executor, SqlitePool};
-
-use backend::db::Db;
-use backend::handlers::{engagement, engagement_milestone, software_contract};
 
 async fn setup_db() -> Db {
     use std::sync::Arc;
@@ -517,4 +519,29 @@ async fn generates_software_contract_body() {
     let resp: serde_json::Value =
         serde_json::from_slice(&body).expect("software contract response was not JSON");
     assert_eq!(resp["contract_type"], "software_services");
+}
+
+#[actix_rt::test]
+async fn payment_received_from_draft_should_fail() {
+    let db = setup_db().await;
+
+    let result = OperationsKernelService::apply_engagement_event(
+        &db.pool.as_ref(),
+        1,
+        999,
+        None,
+        EngagementStatus::Draft,
+        EngagementEvent::PaymentReceived,
+    )
+    .await;
+
+    assert!(result.is_err());
+
+    let error = result.err().unwrap();
+
+    assert!(
+        error.contains("Invalid engagement transition"),
+        "Expected invalid transition error, got: {}",
+        error
+    );
 }
