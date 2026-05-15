@@ -1,4 +1,7 @@
 // src/auth.rs
+
+pub mod permissions;
+
 use crate::db::Db;
 use actix_web::{HttpResponse, Responder, web};
 use argon2::{

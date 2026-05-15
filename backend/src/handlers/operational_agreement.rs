@@ -1,5 +1,7 @@
 use actix_web::{HttpResponse, Responder, web};
 
+use crate::auth::permissions::{can_manage_agreements, require_permission};
+use crate::auth_context::AuthUser;
 use crate::db::Db;
 use crate::models::agreement_payout_rule::{AgreementPayoutRule, CreateAgreementPayoutRule};
 use crate::models::operational_agreement::{CreateOperationalAgreement, OperationalAgreement};
@@ -22,9 +24,16 @@ pub async fn list_organization_agreements(
 
 pub async fn create_organization_agreement(
     db: web::Data<Db>,
+    auth: AuthUser,
     path: web::Path<i64>,
     payload: web::Json<CreateOperationalAgreement>,
 ) -> impl Responder {
+    if !can_manage_agreements(&auth.user_type) {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "error": "You do not have permission to create agreements."
+        }));
+    }
+
     let organization_id = path.into_inner();
 
     match OperationalAgreement::create(db.pool.as_ref(), organization_id, payload.into_inner())
@@ -93,9 +102,15 @@ pub async fn list_agreement_payout_rules(
 
 pub async fn create_agreement_payout_rule(
     db: web::Data<Db>,
+    auth: AuthUser,
     path: web::Path<i64>,
     payload: web::Json<CreateAgreementPayoutRule>,
 ) -> impl Responder {
+    if !can_manage_agreements(&auth.user_type) {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "error": "You do not have permission to create agreements."
+        }));
+    }
     let agreement_id = path.into_inner();
     let input = payload.into_inner();
 
