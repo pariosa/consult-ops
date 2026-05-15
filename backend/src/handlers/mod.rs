@@ -10,6 +10,7 @@ pub mod operational_event;
 pub mod operational_finance;
 pub mod operational_transaction;
 mod organization;
+pub mod organization_member;
 pub mod party;
 mod payment;
 mod project;
@@ -23,6 +24,10 @@ pub use client::{create_client, get_clients};
 pub use contract::{create_contract, get_contracts};
 pub use invoice::{create_invoice, get_invoices};
 pub use operational_event::{list_engagement_events, list_organization_events};
+pub use organization_member::{
+    accept_organization_invitation, invite_organization_member, list_organization_invitations,
+    list_organization_members,
+};
 
 pub use organization::*;
 pub use payment::{create_payment, get_payments};

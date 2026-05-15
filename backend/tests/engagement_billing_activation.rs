@@ -1,7 +1,7 @@
 use backend::domain::engagement_state::{EngagementEvent, EngagementStatus};
 use backend::services::event_service::EventService;
 use backend::services::operations_kernel_service::OperationsKernelService;
-use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
+use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
 
 async fn setup_test_db() -> SqlitePool {
     let pool = SqlitePoolOptions::new()
@@ -31,7 +31,7 @@ async fn setup_test_db() -> SqlitePool {
             contract_id INTEGER,
             invoice_id INTEGER,
             payment_id INTEGER,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         "#,
@@ -53,7 +53,7 @@ async fn setup_test_db() -> SqlitePool {
             stripe_checkout_session_id TEXT,
             stripe_payment_intent_id TEXT,
             paid_at TEXT,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         "#,
@@ -74,7 +74,7 @@ async fn setup_test_db() -> SqlitePool {
             from_status TEXT NULL,
             to_status TEXT NULL,
             metadata TEXT NOT NULL DEFAULT '{}',
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         "#,

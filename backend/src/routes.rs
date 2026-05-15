@@ -1,24 +1,26 @@
 use crate::auth::{forgot_password, login, register, reset_password};
 use crate::handlers::{
-    activate_engagement, approve_engagement_milestone, attach_checkout_session, cancel_engagement,
-    cancel_transaction, complete_engagement, create_activation_checkout, create_activation_fee,
-    create_agreement_payout_rule, create_client, create_contract, create_engagement_billing,
-    create_engagement_milestone, create_for_project, create_invoice, create_organization_agreement,
-    create_organization_client, create_organization_member, create_organization_party,
-    create_organization_project, create_party_from_client, create_party_from_user, create_payment,
-    create_project, create_user, delete_organization_member, dispute_engagement,
-    generate_for_engagement, get_admin_summary, get_client_portal_summary, get_clients,
-    get_contracts, get_invoices, get_me, get_my_organization, get_organization,
-    get_organization_clients, get_organization_contracts, get_organization_finance_summary,
-    get_organization_invoices, get_organization_members, get_organization_party_balances,
-    get_organization_payments, get_organization_projects, get_payments, get_project_portal_summary,
-    get_projects, get_user_by_id, get_users, list_agreement_payout_rules, list_engagement_billing,
+    accept_organization_invitation, activate_engagement, approve_engagement_milestone,
+    attach_checkout_session, cancel_engagement, cancel_transaction, complete_engagement,
+    create_activation_checkout, create_activation_fee, create_agreement_payout_rule, create_client,
+    create_contract, create_engagement_billing, create_engagement_milestone, create_for_project,
+    create_invoice, create_organization_agreement, create_organization_client,
+    create_organization_member, create_organization_party, create_organization_project,
+    create_party_from_client, create_party_from_user, create_payment, create_project, create_user,
+    delete_organization_member, dispute_engagement, generate_for_engagement, get_admin_summary,
+    get_client_portal_summary, get_clients, get_contracts, get_invoices, get_me,
+    get_my_organization, get_organization, get_organization_clients, get_organization_contracts,
+    get_organization_finance_summary, get_organization_invoices, get_organization_members,
+    get_organization_party_balances, get_organization_payments, get_organization_projects,
+    get_payments, get_project_portal_summary, get_projects, get_user_by_id, get_users,
+    invite_organization_member, list_agreement_payout_rules, list_engagement_billing,
     list_engagement_events, list_engagement_milestones, list_engagement_transactions,
     list_for_project, list_organization_agreements, list_organization_events,
-    list_organization_parties, list_organization_transactions, mark_billing_paid,
-    mark_contract_sent, mark_engagement_milestone_paid, mark_signed, mark_transaction_failed,
-    mark_transaction_paid, mark_transaction_processing, reopen_engagement_milestone, show,
-    stripe_webhook, submit_engagement_milestone, update_engagement_milestone, update_organization,
+    list_organization_invitations, list_organization_members, list_organization_parties,
+    list_organization_transactions, mark_billing_paid, mark_contract_sent,
+    mark_engagement_milestone_paid, mark_signed, mark_transaction_failed, mark_transaction_paid,
+    mark_transaction_processing, reopen_engagement_milestone, show, stripe_webhook,
+    submit_engagement_milestone, update_engagement_milestone, update_organization,
     update_organization_member, update_user_type,
 };
 use actix_web::web;
@@ -270,6 +272,22 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route(
                 "/organizations/{id}/party-balances",
                 web::get().to(get_organization_party_balances),
+            )
+            .route(
+                "/organizations/{id}/members",
+                web::get().to(list_organization_members),
+            )
+            .route(
+                "/organizations/{id}/invitations",
+                web::get().to(list_organization_invitations),
+            )
+            .route(
+                "/organizations/{id}/invitations",
+                web::post().to(invite_organization_member),
+            )
+            .route(
+                "/organization-invitations/accept",
+                web::post().to(accept_organization_invitation),
             ),
     );
 }

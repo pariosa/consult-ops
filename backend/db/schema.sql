@@ -25,13 +25,29 @@ CREATE TABLE IF NOT EXISTS organization_members (
     organization_id INTEGER NOT NULL,
     user_id INTEGER NOT NULL,
     role TEXT NOT NULL DEFAULT 'viewer',
+    status TEXT NOT NULL DEFAULT 'active',
     created_at TEXT,
     updated_at TEXT,
     FOREIGN KEY(organization_id) REFERENCES organizations(id),
     FOREIGN KEY(user_id) REFERENCES users(id),
     UNIQUE(organization_id, user_id)
 );
-
+ 
+CREATE TABLE IF NOT EXISTS organization_invitations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id INTEGER NOT NULL,
+    email TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'member',
+    token TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'pending',
+    invited_by_user_id INTEGER,
+    accepted_by_user_id INTEGER,
+    expires_at TEXT NOT NULL,
+    accepted_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(organization_id, email, status)
+);
 -- password reset tokens table
 CREATE TABLE IF NOT EXISTS password_reset_tokens (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
