@@ -1,112 +1,224 @@
-<!-- frontend/pages/organization/index.vue -->
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import OrganizationSidebar from '~/layouts/organization.vue';
 import { useApi } from '~/composables/useApi';
-import { useOrganizationStore } from '~/stores/organization';
+import { usePermissions } from '~/composables/usePermissions';
 
-definePageMeta({
-  middleware: ['role'],
-  allowedUserTypes: ['admin', 'consultant', 'client'],
-});
-
-const { apiFetch } = useApi();
-const orgStore = useOrganizationStore();
-
-const projects = ref<any[]>([]);
-const clients = ref<any[]>([]);
-const contracts = ref<any[]>([]);
-const invoices = ref<any[]>([]);
-const payments = ref<any[]>([]);
+const api = useApi();
+const { canManageFinance, canManageAgreements, canProcessTransactions, role } =
+  usePermissions();
 
 const loading = ref(true);
 const error = ref('');
+const organization = ref<any>(null);
 
-async function loadOrganizationOverview() {
+const cards = computed(() =>
+  [
+    {
+      title: 'Members',
+      description: 'View active workspace users and assigned roles.',
+      to: '/organization/members',
+      show: canManageAgreements.value,
+    },
+    {
+      title: 'Invitations',
+      description:
+        'Invite contractors, finance admins, clients, and operators.',
+      to: '/organization/invitations',
+      show: canManageAgreements.value,
+    },
+    {
+      title: 'Operational Finance',
+      description: 'Review outstanding obligations, balances, and paid totals.',
+      to: '/organization/finance',
+      show: canManageFinance.value,
+    },
+    {
+      title: 'Engagements',
+      description: 'Manage consulting engagements and workflow state.',
+      to: '/engagements',
+      show: canProcessTransactions.value || canManageAgreements.value,
+    },
+    {
+      title: 'Projects',
+      description: 'Track projects connected to clients and engagements.',
+      to: '/projects',
+      show: true,
+    },
+    {
+      title: 'Clients',
+      description: 'Manage client records and verified client parties.',
+      to: '/clients',
+      show: true,
+    },
+    {
+      title: 'Transactions',
+      description:
+        'Open an engagement transaction ledger from an engagement page.',
+      to: '/engagements',
+      show: canProcessTransactions.value,
+    },
+    {
+      title: 'Agreements',
+      description: 'Configure payout rules from an engagement agreement page.',
+      to: '/engagements',
+      show: canManageAgreements.value,
+    },
+    {
+      title: 'Milestones',
+      description: 'Submit, approve, and pay milestone work.',
+      to: '/engagements',
+      show: canProcessTransactions.value,
+    },
+  ].filter((card) => card.show),
+);
+
+async function refresh() {
   loading.value = true;
   error.value = '';
 
   try {
-    await orgStore.fetchCurrentOrganization();
-    await orgStore.fetchMembers();
-
-    const orgId = orgStore.organization?.id;
-
-    if (!orgId) {
-      throw new Error('No organization found for this user.');
-    }
-
-    const [projectsRes, clientsRes, contractsRes, invoicesRes, paymentsRes] =
-      await Promise.all([
-        apiFetch<any[]>(`/api/organizations/${orgId}/projects`),
-        apiFetch<any[]>(`/api/organizations/${orgId}/clients`),
-        apiFetch<any[]>(`/api/organizations/${orgId}/contracts`),
-        apiFetch<any[]>(`/api/organizations/${orgId}/invoices`),
-        apiFetch<any[]>(`/api/organizations/${orgId}/payments`),
-      ]);
-
-    projects.value = projectsRes || [];
-    clients.value = clientsRes || [];
-    contracts.value = contractsRes || [];
-    invoices.value = invoicesRes || [];
-    payments.value = paymentsRes || [];
+    organization.value = await api.get('/api/me/organization');
   } catch (err: any) {
-    console.error('Organization overview failed:', err);
-    error.value =
-      orgStore.error ||
-      err?.data?.message ||
-      err?.message ||
-      'Failed to load organization.';
+    error.value = err?.message || 'Failed to load organization workspace.';
   } finally {
     loading.value = false;
   }
 }
 
-onMounted(loadOrganizationOverview);
+onMounted(refresh);
 </script>
 
 <template>
-  <DashboardShell title="Organization" subtitle="Manage your company workspace">
+  <DashboardShell
+    title="Organization HQ"
+    subtitle="Your role-aware workspace command center."
+  >
     <section v-if="loading" class="portal-section">
-      Loading organization...
+      Loading workspace...
     </section>
 
-    <section v-else-if="error" class="form-error">
-      {{ error }}
-    </section>
+    <section v-else-if="error" class="form-error">{{ error }}</section>
 
-    <section v-else class="dashboard-grid">
-      <NuxtLink to="/organization" class="kpi-link">
-        <KPITile
-          label="Organization"
-          :value="orgStore.organization?.name || '—'"
-        />
-      </NuxtLink>
+    <div v-else class="workspace-layout">
+      <OrganizationSidebar />
 
-      <NuxtLink to="/organization/members" class="kpi-link">
-        <KPITile label="Members" :value="orgStore.memberCount" />
-      </NuxtLink>
+      <main class="workspace-main">
+        <section class="portal-section hero">
+          <p class="eyebrow">Organization Workspace</p>
+          <h2>{{ organization?.name || 'Your Organization' }}</h2>
+          <p>
+            You are signed in as <strong>{{ role || 'member' }}</strong
+            >. The tools below are filtered by your operational permissions.
+          </p>
+        </section>
 
-      <NuxtLink to="/organization/projects" class="kpi-link">
-        <KPITile label="Projects" :value="projects.length" />
-      </NuxtLink>
-
-      <NuxtLink to="/clients" class="kpi-link">
-        <KPITile label="Clients" :value="clients.length" />
-      </NuxtLink>
-
-      <NuxtLink to="/engagements">Engagements</NuxtLink>
-
-      <!-- <NuxtLink to="/contracts" class="kpi-link"> -->
-      <KPITile label="Contracts" :value="contracts.length" />
-      <!-- </NuxtLink> -->
-
-      <!-- <NuxtLink to="/invoices" class="kpi-link"> -->
-      <KPITile label="Invoices" :value="invoices.length" />
-      <!-- </NuxtLink> -->
-
-      <!-- <NuxtLink to="/payments" class="kpi-link"> -->
-      <KPITile label="Payments" :value="payments.length" />
-      <!-- </NuxtLink> -->
-    </section>
+        <section class="card-grid">
+          <NuxtLink
+            v-for="card in cards"
+            :key="card.title"
+            :to="card.to"
+            class="workspace-card"
+          >
+            <p class="eyebrow">{{ card.title }}</p>
+            <h3>{{ card.title }}</h3>
+            <p>{{ card.description }}</p>
+          </NuxtLink>
+        </section>
+      </main>
+    </div>
   </DashboardShell>
 </template>
+
+<style scoped>
+.workspace-layout {
+  display: grid;
+  gap: 20px;
+}
+
+.workspace-main {
+  min-width: 0;
+}
+
+.portal-section {
+  border: 1px solid rgba(45, 212, 191, 0.22);
+  border-radius: 18px;
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.96),
+    rgba(2, 12, 23, 0.96)
+  );
+  color: #e5eefc;
+  padding: 24px;
+  margin-bottom: 20px;
+}
+
+.hero h2 {
+  color: #f8fafc;
+  margin: 0 0 10px;
+}
+
+.hero p {
+  color: #cbd5e1;
+}
+
+.eyebrow {
+  color: #67e8f9;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+}
+
+.card-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.workspace-card {
+  border: 1px solid rgba(45, 212, 191, 0.18);
+  border-radius: 18px;
+  background: rgba(8, 31, 42, 0.86);
+  color: #cbd5e1;
+  padding: 20px;
+  text-decoration: none;
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    background 0.16s ease;
+}
+
+.workspace-card:hover {
+  background: rgba(15, 46, 61, 0.96);
+  border-color: rgba(45, 212, 191, 0.38);
+  transform: translateY(-2px);
+}
+
+.workspace-card h3 {
+  color: #f8fafc;
+  margin: 0 0 8px;
+}
+
+.workspace-card p {
+  margin: 0;
+}
+
+.form-error {
+  border: 1px solid rgba(248, 113, 113, 0.38);
+  border-radius: 14px;
+  background: rgba(127, 29, 29, 0.24);
+  color: #fecaca;
+  padding: 16px;
+}
+
+@media (min-width: 980px) {
+  .workspace-layout {
+    grid-template-columns: 280px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .card-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+</style>
