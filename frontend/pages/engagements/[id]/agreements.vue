@@ -314,87 +314,87 @@ onMounted(refresh);
           View Transaction Ledger
         </button>
       </section>
+      <section v-if="canManageAgreements" class="setup-grid">
+        <section class="setup-grid">
+          <div class="portal-section">
+            <p class="eyebrow">Client Party</p>
+            <h2>Create Client</h2>
 
-      <section class="setup-grid">
-        <div class="portal-section">
-          <p class="eyebrow">Client Party</p>
-          <h2>Create Client</h2>
+            <label>Name</label>
+            <input v-model="clientParty.name" class="form-input" />
 
-          <label>Name</label>
-          <input v-model="clientParty.name" class="form-input" />
+            <label>Email</label>
+            <input v-model="clientParty.email" class="form-input" />
 
-          <label>Email</label>
-          <input v-model="clientParty.email" class="form-input" />
-
-          <button
-            class="form-button"
-            :disabled="saving || !clientParty.name"
-            @click="createClientParty"
-          >
-            Add Client Party
-          </button>
-        </div>
-
-        <div class="portal-section">
-          <p class="eyebrow">Contractor Party</p>
-          <h2>Create Contractor</h2>
-
-          <label>Name</label>
-          <input v-model="contractorParty.name" class="form-input" />
-
-          <label>Email</label>
-          <input v-model="contractorParty.email" class="form-input" />
-
-          <button
-            class="form-button"
-            :disabled="saving || !contractorParty.name"
-            @click="createContractorParty"
-          >
-            Add Contractor Party
-          </button>
-        </div>
-      </section>
-
-      <section class="portal-section">
-        <div class="section-header">
-          <div>
-            <p class="eyebrow">Agreement</p>
-            <h2>Engagement Agreement</h2>
-            <p>
-              One constrained agreement links this engagement to payout rules.
-            </p>
+            <button
+              class="form-button"
+              :disabled="saving || !clientParty.name"
+              @click="createClientParty"
+            >
+              Add Client Party
+            </button>
           </div>
-        </div>
 
-        <div v-if="selectedAgreement" class="ops-card">
-          <h3>{{ selectedAgreement.title }}</h3>
-          <p>Type: {{ selectedAgreement.agreement_type }}</p>
-          <p>Status: {{ selectedAgreement.status }}</p>
-        </div>
+          <div class="portal-section">
+            <p class="eyebrow">Contractor Party</p>
+            <h2>Create Contractor</h2>
 
-        <div v-else class="form-grid">
-          <label>Agreement Title</label>
-          <input v-model="agreementForm.title" class="form-input" />
+            <label>Name</label>
+            <input v-model="contractorParty.name" class="form-input" />
 
-          <label>Agreement Type</label>
-          <select v-model="agreementForm.agreement_type" class="form-input">
-            <option value="milestone_payout">Milestone Payout</option>
-            <option value="subcontractor_split">Subcontractor Split</option>
-            <option value="revenue_share">Revenue Share</option>
-            <option value="dividend_share">Dividend Share</option>
-          </select>
+            <label>Email</label>
+            <input v-model="contractorParty.email" class="form-input" />
 
-          <button
-            v-if="canManageAgreements"
-            class="form-button"
-            :disabled="saving"
-            @click="createAgreement"
-          >
-            Create Agreement
-          </button>
-        </div>
+            <button
+              class="form-button"
+              :disabled="saving || !contractorParty.name"
+              @click="createContractorParty"
+            >
+              Add Contractor Party
+            </button>
+          </div>
+        </section>
       </section>
+      <div v-else-if="canManageAgreements" class="form-grid">
+        <section class="portal-section">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Agreement</p>
+              <h2>Engagement Agreement</h2>
+              <p>
+                One constrained agreement links this engagement to payout rules.
+              </p>
+            </div>
+          </div>
 
+          <div v-if="selectedAgreement" class="ops-card">
+            <h3>{{ selectedAgreement.title }}</h3>
+            <p>Type: {{ selectedAgreement.agreement_type }}</p>
+            <p>Status: {{ selectedAgreement.status }}</p>
+          </div>
+
+          <div v-else class="form-grid">
+            <label>Agreement Title</label>
+            <input v-model="agreementForm.title" class="form-input" />
+
+            <label>Agreement Type</label>
+            <select v-model="agreementForm.agreement_type" class="form-input">
+              <option value="milestone_payout">Milestone Payout</option>
+              <option value="subcontractor_split">Subcontractor Split</option>
+              <option value="revenue_share">Revenue Share</option>
+              <option value="dividend_share">Dividend Share</option>
+            </select>
+            <button
+              v-if="canManageAgreements"
+              class="form-button"
+              :disabled="saving"
+              @click="createAgreement"
+            >
+              Create Agreement
+            </button>
+          </div>
+        </section>
+      </div>
       <section class="portal-section">
         <div class="section-header">
           <div>

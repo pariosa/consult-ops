@@ -14,6 +14,14 @@ pub async fn seed_demo_data(db: &Db) -> sqlx::Result<()> {
     let now = Utc::now().to_rfc3339();
     let demo_password = hash_password("DemoPass123!").expect("Failed to hash demo password");
 
+    create_platform_user(
+        db,
+        "superadmin@consultops.test",
+        "Platform Super Admin",
+        "super_admin",
+        &demo_password,
+    )
+    .await?;
     // =====================================================
     // ORG 1
     // Atlas Field Consulting
@@ -24,9 +32,9 @@ pub async fn seed_demo_data(db: &Db) -> sqlx::Result<()> {
 
     create_user_and_membership(
         db,
-        "admin@atlas.test",
-        "Avery Atlas",
-        "admin",
+        "owner@atlas.test",
+        "Olivia Owner",
+        "owner",
         "owner",
         atlas_org_id,
         &demo_password,
@@ -35,9 +43,42 @@ pub async fn seed_demo_data(db: &Db) -> sqlx::Result<()> {
 
     create_user_and_membership(
         db,
-        "consultant@atlas.test",
-        "Jordan SiteLead",
-        "consultant",
+        "admin@atlas.test",
+        "Avery Atlas",
+        "admin",
+        "admin",
+        atlas_org_id,
+        &demo_password,
+    )
+    .await?;
+
+    create_user_and_membership(
+        db,
+        "finance@atlas.test",
+        "Finley Finance",
+        "finance_admin",
+        "finance_admin",
+        atlas_org_id,
+        &demo_password,
+    )
+    .await?;
+
+    create_user_and_membership(
+        db,
+        "ops@atlas.test",
+        "Riley Operations",
+        "operations_manager",
+        "operations_manager",
+        atlas_org_id,
+        &demo_password,
+    )
+    .await?;
+
+    create_user_and_membership(
+        db,
+        "contractor@atlas.test",
+        "Jordan Contractor",
+        "contractor",
         "contractor",
         atlas_org_id,
         &demo_password,
@@ -46,10 +87,10 @@ pub async fn seed_demo_data(db: &Db) -> sqlx::Result<()> {
 
     create_user_and_membership(
         db,
-        "client@atlas.test",
-        "Morgan Utilities",
-        "client",
-        "manager",
+        "client.viewer@atlas.test",
+        "Morgan Client Viewer",
+        "client_viewer",
+        "client_viewer",
         atlas_org_id,
         &demo_password,
     )
@@ -149,9 +190,9 @@ pub async fn seed_demo_data(db: &Db) -> sqlx::Result<()> {
 
     create_user_and_membership(
         db,
-        "admin@verdant.test",
-        "Sage Verdant",
-        "admin",
+        "owner@verdant.test",
+        "Oliver Ownerton",
+        "owner",
         "owner",
         verdant_org_id,
         &demo_password,
@@ -160,9 +201,42 @@ pub async fn seed_demo_data(db: &Db) -> sqlx::Result<()> {
 
     create_user_and_membership(
         db,
-        "consultant@verdant.test",
-        "Taylor Commerce",
-        "consultant",
+        "admin@verdant.test",
+        "Vincent Vadmin",
+        "admin",
+        "admin",
+        verdant_org_id,
+        &demo_password,
+    )
+    .await?;
+
+    create_user_and_membership(
+        db,
+        "finance@verdant.test",
+        "Franklin Financier",
+        "finance_admin",
+        "finance_admin",
+        verdant_org_id,
+        &demo_password,
+    )
+    .await?;
+
+    create_user_and_membership(
+        db,
+        "ops@verdant.test",
+        "Binksy Operations",
+        "operations_manager",
+        "operations_manager",
+        verdant_org_id,
+        &demo_password,
+    )
+    .await?;
+
+    create_user_and_membership(
+        db,
+        "contractor@verdant.test",
+        "Herbie Contractor",
+        "contractor",
         "contractor",
         verdant_org_id,
         &demo_password,
@@ -171,10 +245,10 @@ pub async fn seed_demo_data(db: &Db) -> sqlx::Result<()> {
 
     create_user_and_membership(
         db,
-        "client@verdant.test",
-        "Parker Retail",
-        "client",
-        "manager",
+        "client.viewer@verdant.test",
+        "Clemson Client",
+        "client_viewer",
+        "client_viewer",
         verdant_org_id,
         &demo_password,
     )
@@ -340,9 +414,14 @@ async fn create_user_and_membership(
 
     sqlx::query(
         r#"
-        INSERT OR IGNORE INTO organization_members
-        (organization_id, user_id, role, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO organization_members
+            (organization_id, user_id, role, status, created_at, updated_at)
+        VALUES (?, ?, ?, 'active', ?, ?)
+        ON CONFLICT(organization_id, user_id)
+        DO UPDATE SET
+        role = excluded.role,
+        status = 'active',
+        updated_at = excluded.updated_at
         "#,
     )
     .bind(organization_id)
@@ -444,4 +523,53 @@ async fn create_payment_if_missing(
     .await?;
 
     Ok(())
+}
+async fn create_platform_user(
+    db: &Db,
+    email: &str,
+    name: &str,
+    user_type: &str,
+    password_hash: &str,
+) -> sqlx::Result<i64> {
+    let now = Utc::now().to_rfc3339();
+
+    if let Some(id) = sqlx::query_scalar::<_, i64>("SELECT id FROM users WHERE email = ? LIMIT 1")
+        .bind(email)
+        .fetch_optional(&*db.pool)
+        .await?
+    {
+        sqlx::query(
+            r#"
+            UPDATE users
+            SET name = ?, user_type = ?, updated_at = ?
+            WHERE id = ?
+            "#,
+        )
+        .bind(name)
+        .bind(user_type)
+        .bind(&now)
+        .bind(id)
+        .execute(&*db.pool)
+        .await?;
+
+        return Ok(id);
+    }
+
+    let rec = sqlx::query(
+        r#"
+        INSERT INTO users
+        (email, password_hash, name, user_type, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        "#,
+    )
+    .bind(email)
+    .bind(password_hash)
+    .bind(name)
+    .bind(user_type)
+    .bind(&now)
+    .bind(&now)
+    .execute(&*db.pool)
+    .await?;
+
+    Ok(rec.last_insert_rowid())
 }

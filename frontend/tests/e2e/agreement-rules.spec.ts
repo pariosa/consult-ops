@@ -127,9 +127,8 @@ test('admin can configure agreement with verified parties', async ({
   await expect(payer).toHaveValue('1');
   await expect(payee).toHaveValue('2');
 
-  await expect(
-    page.getByText('Client pays contractor on milestone approval'),
-  ).toBeVisible();
+  await expect(page.locator('#payer-party')).toHaveValue('1');
+  await expect(page.locator('#payee-party')).toHaveValue('2');
 });
 test('unverified parties are not selectable for core payout rules', async ({
   page,

@@ -13,12 +13,18 @@ mod organization;
 pub mod organization_member;
 pub mod party;
 mod payment;
+pub mod platform_admin;
 mod project;
 pub mod software_contract;
 mod stripe_engagement_handler;
 pub mod stripe_webhook;
 pub mod subscription;
 mod user;
+
+pub use platform_admin::{
+    assign_platform_user_to_organization, create_platform_organization, create_platform_user,
+    list_platform_organization_members, list_platform_organizations, list_platform_users,
+};
 
 pub use client::{create_client, get_clients};
 pub use contract::{create_contract, get_contracts};

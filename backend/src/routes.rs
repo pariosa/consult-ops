@@ -1,12 +1,13 @@
 use crate::auth::{forgot_password, login, register, reset_password};
 use crate::handlers::{
     accept_organization_invitation, activate_engagement, approve_engagement_milestone,
-    attach_checkout_session, cancel_engagement, cancel_transaction, complete_engagement,
-    create_activation_checkout, create_activation_fee, create_agreement_payout_rule, create_client,
-    create_contract, create_engagement_billing, create_engagement_milestone, create_for_project,
-    create_invoice, create_organization_agreement, create_organization_client,
-    create_organization_member, create_organization_party, create_organization_project,
-    create_party_from_client, create_party_from_user, create_payment, create_project, create_user,
+    assign_platform_user_to_organization, attach_checkout_session, cancel_engagement,
+    cancel_transaction, complete_engagement, create_activation_checkout, create_activation_fee,
+    create_agreement_payout_rule, create_client, create_contract, create_engagement_billing,
+    create_engagement_milestone, create_for_project, create_invoice, create_organization_agreement,
+    create_organization_client, create_organization_member, create_organization_party,
+    create_organization_project, create_party_from_client, create_party_from_user, create_payment,
+    create_platform_organization, create_platform_user, create_project, create_user,
     delete_organization_member, dispute_engagement, generate_for_engagement, get_admin_summary,
     get_client_portal_summary, get_clients, get_contracts, get_invoices, get_me,
     get_my_organization, get_organization, get_organization_clients, get_organization_contracts,
@@ -17,7 +18,8 @@ use crate::handlers::{
     list_engagement_events, list_engagement_milestones, list_engagement_transactions,
     list_for_project, list_organization_agreements, list_organization_events,
     list_organization_invitations, list_organization_members, list_organization_parties,
-    list_organization_transactions, mark_billing_paid, mark_contract_sent,
+    list_organization_transactions, list_platform_organization_members,
+    list_platform_organizations, list_platform_users, mark_billing_paid, mark_contract_sent,
     mark_engagement_milestone_paid, mark_signed, mark_transaction_failed, mark_transaction_paid,
     mark_transaction_processing, reopen_engagement_milestone, show, stripe_webhook,
     submit_engagement_milestone, update_engagement_milestone, update_organization,
@@ -288,6 +290,24 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route(
                 "/organization-invitations/accept",
                 web::post().to(accept_organization_invitation),
+            )
+            .route(
+                "/platform/organizations",
+                web::get().to(list_platform_organizations),
+            )
+            .route(
+                "/platform/organizations",
+                web::post().to(create_platform_organization),
+            )
+            .route("/platform/users", web::get().to(list_platform_users))
+            .route("/platform/users", web::post().to(create_platform_user))
+            .route(
+                "/platform/organizations/{id}/members",
+                web::get().to(list_platform_organization_members),
+            )
+            .route(
+                "/platform/organizations/{id}/members",
+                web::post().to(assign_platform_user_to_organization),
             ),
     );
 }

@@ -19,30 +19,33 @@ impl ResponseError for PermissionError {
         }))
     }
 }
+pub fn can_manage_platform(role: &str) -> bool {
+    matches!(role, "super_admin")
+}
 
 pub fn can_manage_finance(role: &str) -> bool {
-    matches!(role, "owner" | "admin" | "finance_admin")
+    matches!(role, "super_admin" | "owner" | "admin" | "finance_admin")
 }
 
 pub fn can_manage_agreements(role: &str) -> bool {
-    matches!(role, "owner" | "admin" | "finance_admin")
+    matches!(role, "super_admin" | "owner" | "admin" | "finance_admin")
 }
 
 pub fn can_manage_transactions(role: &str) -> bool {
-    matches!(role, "owner" | "admin" | "finance_admin")
+    matches!(role, "super_admin" | "owner" | "admin" | "finance_admin")
 }
 
 pub fn can_process_transactions(role: &str) -> bool {
     matches!(
         role,
-        "owner" | "admin" | "finance_admin" | "operations_manager"
+        "super_admin" | "owner" | "admin" | "finance_admin" | "operations_manager"
     )
 }
 
 pub fn can_manage_milestones(role: &str) -> bool {
     matches!(
         role,
-        "owner" | "admin" | "finance_admin" | "operations_manager" | "contractor"
+        "super_admin" | "owner" | "admin" | "finance_admin" | "operations_manager" | "contractor"
     )
 }
 
