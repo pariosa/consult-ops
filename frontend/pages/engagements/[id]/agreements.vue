@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useApi } from '~/composables/useApi';
+import { usePermissions } from '~/composables/usePermissions';
 
 const route = useRoute();
 const router = useRouter();
@@ -20,7 +21,67 @@ const agreements = ref<any[]>([]);
 const payoutRules = ref<any[]>([]);
 
 const selectedAgreementId = ref<number | null>(null);
+const { canManageAgreements } = usePermissions();
 
+const verifiedParties = computed(() =>
+  parties.value.filter((party) => Number(party.is_verified) === 1),
+);
+
+const verifiedClientParties = computed(() =>
+  verifiedParties.value.filter((party) => party.party_type === 'client'),
+);
+
+const verifiedContractorParties = computed(() =>
+  verifiedParties.value.filter((party) =>
+    ['contractor', 'subcontractor'].includes(party.party_type),
+  ),
+);
+async function createVerifiedClientParty() {
+  if (!organizationId.value || !engagement.value?.client_id) {
+    error.value = 'No client is linked to this engagement project.';
+    return;
+  }
+
+  saving.value = true;
+  error.value = '';
+
+  try {
+    await api.post(
+      `/api/organizations/${organizationId.value}/parties/from-client/${engagement.value.client_id}`,
+      {},
+    );
+    await refresh();
+  } catch (err: any) {
+    error.value =
+      err?.data?.error ||
+      err?.message ||
+      'Failed to create verified client party.';
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function createVerifiedUserParty() {
+  if (!organizationId.value) return;
+
+  saving.value = true;
+  error.value = '';
+
+  try {
+    await api.post(
+      `/api/organizations/${organizationId.value}/parties/from-user/${engagement.value?.contractor_user_id || 1}`,
+      {},
+    );
+    await refresh();
+  } catch (err: any) {
+    error.value =
+      err?.data?.error ||
+      err?.message ||
+      'Failed to create verified contractor party.';
+  } finally {
+    saving.value = false;
+  }
+}
 const clientParty = ref({
   name: '',
   email: '',
@@ -143,19 +204,7 @@ async function createContractorParty() {
     party_type: 'contractor',
   };
 }
-const verifiedParties = computed(() =>
-  parties.value.filter((party) => Number(party.is_verified) === 1),
-);
 
-const verifiedClientParties = computed(() =>
-  verifiedParties.value.filter((party) => party.party_type === 'client'),
-);
-
-const verifiedContractorParties = computed(() =>
-  verifiedParties.value.filter((party) =>
-    ['contractor', 'subcontractor'].includes(party.party_type),
-  ),
-);
 async function createAgreement() {
   if (!organizationId.value) return;
 
@@ -336,6 +385,7 @@ onMounted(refresh);
           </select>
 
           <button
+            v-if="canManageAgreements"
             class="form-button"
             :disabled="saving"
             @click="createAgreement"
@@ -358,8 +408,9 @@ onMounted(refresh);
         </div>
 
         <div class="form-grid">
-          <label>Payer</label>
+          <label for="payer-party">Payer</label>
           <select
+            id="payer-party"
             v-model.number="payoutRuleForm.from_party_id"
             class="form-input"
           >
@@ -369,12 +420,13 @@ onMounted(refresh);
               :key="party.id"
               :value="party.id"
             >
-              {{ party.name }} — {{ party.party_type }}
+              {{ party.name }} — Verified {{ party.party_type }}
             </option>
           </select>
 
-          <label>Payee</label>
+          <label for="payee-party">Payee</label>
           <select
+            id="payee-party"
             v-model.number="payoutRuleForm.to_party_id"
             class="form-input"
           >
@@ -384,7 +436,7 @@ onMounted(refresh);
               :key="party.id"
               :value="party.id"
             >
-              {{ party.name }} — {{ party.party_type }}
+              {{ party.name }} — Verified {{ party.party_type }}
             </option>
           </select>
 
@@ -412,15 +464,40 @@ onMounted(refresh);
           </select>
 
           <button
+            v-if="canManageAgreements"
             class="form-button"
             :disabled="saving || !selectedAgreementId"
             @click="createPayoutRule"
           >
             Add Payout Rule
           </button>
+          <div v-if="!canManageAgreements" class="form-error">
+            You can view agreement rules, but you do not have permission to
+            modify them.
+          </div>
         </div>
       </section>
+      <section v-if="canManageAgreements" class="portal-section">
+        <p class="eyebrow">Verified Parties</p>
+        <h2>Assign Verified Parties</h2>
+        <p>Use verified client and user records for payer/payee routing.</p>
 
+        <div class="verified-grid">
+          <button
+            class="form-button secondary"
+            @click="createVerifiedClientParty"
+          >
+            Create Verified Client Party
+          </button>
+
+          <button
+            class="form-button secondary"
+            @click="createVerifiedUserParty"
+          >
+            Create Verified Contractor Party
+          </button>
+        </div>
+      </section>
       <section class="portal-section">
         <p class="eyebrow">Existing Rules</p>
         <h2>Payout Rules</h2>
