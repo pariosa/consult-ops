@@ -4,8 +4,12 @@ pub mod engagement;
 pub mod engagement_billing;
 pub mod engagement_milestone;
 
+pub mod agreement_payout_rule;
 pub mod invoice;
+pub mod operational_agreement;
+pub mod operational_transaction;
 pub mod organization;
+pub mod party;
 pub mod payment;
 pub mod project;
 pub mod user;
@@ -21,3 +25,8 @@ pub use invoice::Invoice;
 pub use organization::{CreateOrganization, Organization, UpdateOrganization};
 pub use payment::Payment;
 pub use project::Project;
+
+pub use agreement_payout_rule::*;
+pub use operational_agreement::*;
+pub use operational_transaction::*;
+pub use party::*;

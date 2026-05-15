@@ -5,7 +5,9 @@ use crate::models::engagement_milestone::{
     CreateEngagementMilestone, CreateEngagementMilestoneRequest, EngagementMilestone,
     UpdateEngagementMilestoneRequest,
 };
+use crate::models::operational_agreement::OperationalAgreement;
 use crate::services::event_service::EventService;
+use crate::services::transaction_workflow_service::TransactionWorkflowService;
 
 async fn record_milestone_and_engagement_event(
     db: &Db,
@@ -210,6 +212,26 @@ pub async fn approve_engagement_milestone(
                     }),
                 )
                 .await;
+                if let Ok(Some(agreement)) = OperationalAgreement::latest_for_engagement(
+                    db.pool.as_ref(),
+                    item.engagement_id,
+                )
+                .await
+                {
+                    if let Err(err) = TransactionWorkflowService::generate_transactions_for_trigger(
+                        db.pool.as_ref(),
+                        organization_id,
+                        agreement.id,
+                        Some(item.engagement_id),
+                        Some(milestone_id),
+                        "MilestoneApproved",
+                        item.amount_cents,
+                    )
+                    .await
+                    {
+                        eprintln!("generate_transactions_for_trigger error: {:?}", err);
+                    }
+                }
             }
 
             HttpResponse::Ok().json(item)
