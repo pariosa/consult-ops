@@ -57,7 +57,9 @@ async function previewContract() {
   const res: any = await generateSoftwareContract(engagementId);
   contractPreview.value = res.body;
 }
-
+function goToAgreements() {
+  router.push(`/engagements/${engagementId}/agreements`);
+}
 async function sendContract() {
   engagement.value = await markContractSent(engagementId);
 }
@@ -80,7 +82,9 @@ async function markPaidLocal(id: number) {
   await markMilestonePaid(id);
   await refresh();
 }
-
+function goToTransactions() {
+  router.push(`/engagements/${engagementId}/transactions`);
+}
 function goToMilestones() {
   console.log('goToMilestones clicked', engagementId);
   router.push(`/engagements/${engagementId}/milestones`);
@@ -156,7 +160,9 @@ onMounted(refresh);
         <button class="form-button" @click="previewContract">
           Generate Contract Preview
         </button>
-
+        <button type="button" class="form-button" @click="goToAgreements">
+          Agreement Rules
+        </button>
         <button class="form-button" @click="sendContract">
           Mark Contract Sent
         </button>
@@ -170,6 +176,15 @@ onMounted(refresh);
 
         <button type="button" class="form-button" @click="goToBilling">
           Payment Workflow
+        </button>
+        <button type="button" class="form-button" @click="goToTransactions">
+          Transaction Ledger
+        </button>
+        <button
+          class="form-button"
+          @click="router.push('/organization/finance')"
+        >
+          Finance Dashboard
         </button>
       </section>
 

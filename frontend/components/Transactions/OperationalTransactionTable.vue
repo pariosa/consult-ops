@@ -4,6 +4,12 @@ import TransactionStatusBadge from './TransactionStatusBadge.vue';
 defineProps<{
   transactions: any[];
 }>();
+const emit = defineEmits<{
+  'mark-processing': [transaction: any];
+  'mark-paid': [transaction: any];
+  'mark-failed': [transaction: any];
+  cancel: [transaction: any];
+}>();
 
 function formatMoney(cents: number, currency = 'usd') {
   return `${(cents / 100).toLocaleString(undefined, {
@@ -31,6 +37,7 @@ function formatType(value: string) {
         <span>Amount</span>
         <span>Status</span>
         <span>Trigger</span>
+        <span>Actions</span>
       </div>
 
       <div
@@ -54,6 +61,38 @@ function formatType(value: string) {
         </span>
 
         <span>{{ transaction.trigger_event || 'Manual' }}</span>
+        <span class="action-cell">
+          <button
+            v-if="transaction.status === 'pending'"
+            @click="emit('mark-processing', transaction)"
+          >
+            Processing
+          </button>
+
+          <button
+            v-if="
+              transaction.status === 'pending' ||
+              transaction.status === 'processing'
+            "
+            @click="emit('mark-paid', transaction)"
+          >
+            Paid
+          </button>
+
+          <button
+            v-if="transaction.status === 'processing'"
+            @click="emit('mark-failed', transaction)"
+          >
+            Failed
+          </button>
+
+          <button
+            v-if="transaction.status === 'pending'"
+            @click="emit('cancel', transaction)"
+          >
+            Cancel
+          </button>
+        </span>
       </div>
     </div>
   </section>
@@ -84,7 +123,7 @@ function formatType(value: string) {
   color: #cbd5e1;
   display: grid;
   gap: 12px;
-  grid-template-columns: 1.3fr 0.7fr 0.7fr 0.9fr 0.9fr 1fr;
+  grid-template-columns: 1.2fr 0.6fr 0.6fr 0.8fr 0.8fr 1fr 1.2fr;
   padding: 14px;
 }
 
@@ -116,5 +155,21 @@ function formatType(value: string) {
   .transaction-row--header {
     display: none;
   }
+}
+.action-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.action-cell button {
+  border: 1px solid rgba(45, 212, 191, 0.28);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.95);
+  color: #e5eefc;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 8px 10px;
 }
 </style>

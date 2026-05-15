@@ -7,6 +7,7 @@ pub mod engagement_milestone;
 mod invoice;
 pub mod operational_agreement;
 pub mod operational_event;
+pub mod operational_finance;
 pub mod operational_transaction;
 mod organization;
 pub mod party;
@@ -17,6 +18,7 @@ mod stripe_engagement_handler;
 pub mod stripe_webhook;
 pub mod subscription;
 mod user;
+
 pub use client::{create_client, get_clients};
 pub use contract::{create_contract, get_contracts};
 pub use invoice::{create_invoice, get_invoices};
@@ -44,11 +46,18 @@ pub use engagement_billing::{
     attach_checkout_session, create_activation_checkout, create_activation_fee,
     create_engagement_billing, list_engagement_billing, mark_billing_paid,
 };
-pub use party::{create_organization_party, list_organization_parties};
-
 pub use operational_agreement::{
     create_agreement_payout_rule, create_organization_agreement, list_agreement_payout_rules,
     list_organization_agreements,
 };
+pub use party::{
+    create_organization_party, create_party_from_client, create_party_from_user,
+    list_organization_parties,
+};
 
-pub use operational_transaction::{list_engagement_transactions, list_organization_transactions};
+pub use operational_transaction::{
+    cancel_transaction, list_engagement_transactions, list_organization_transactions,
+    mark_transaction_failed, mark_transaction_paid, mark_transaction_processing,
+};
+
+pub use operational_finance::{get_organization_finance_summary, get_organization_party_balances};

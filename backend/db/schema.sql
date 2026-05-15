@@ -205,6 +205,12 @@ CREATE TABLE IF NOT EXISTS parties (
     name TEXT NOT NULL,
     email TEXT,
     party_type TEXT NOT NULL,
+
+    linked_user_id INTEGER,
+    linked_client_id INTEGER,
+    linked_organization_id INTEGER,
+    is_verified INTEGER NOT NULL DEFAULT 0,
+
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -108,6 +108,32 @@ pub async fn create_agreement_payout_rule(
             return HttpResponse::BadRequest().body("percent must be between 1 and 100");
         }
     }
+    let requires_verified_parties = matches!(
+        input.rule_type.as_str(),
+        "contractor_payout" | "revenue_share" | "dividend"
+    );
+
+    if requires_verified_parties {
+        let verified_count: i32 = sqlx::query_scalar!(
+            r#"
+        SELECT COUNT(*) as "count!"
+        FROM parties
+        WHERE id IN ($1, $2)
+          AND is_verified = 1
+        "#,
+            input.from_party_id,
+            input.to_party_id
+        )
+        .fetch_one(db.pool.as_ref())
+        .await
+        .unwrap_or(0);
+
+        if verified_count < 2 {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "error": "Core payout rules require verified payer and payee parties."
+            }));
+        }
+    }
     let duplicate_count: i32 = sqlx::query_scalar!(
         r#"
     SELECT COUNT(*) as "count!"

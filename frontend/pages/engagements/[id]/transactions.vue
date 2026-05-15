@@ -1,24 +1,39 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
-import { useApi } from '~/composables/useApi';
 import OperationalTransactionTable from '~/components/Transactions/OperationalTransactionTable.vue';
+import { useOperationalTransactions } from '~/composables/useOperationalTransactions';
 
 const route = useRoute();
 const engagementId = Number(route.params.id);
-const api = useApi();
 
 const transactions = ref<any[]>([]);
 const loading = ref(true);
 const error = ref('');
 
+const {
+  getEngagementTransactions,
+  markProcessing,
+  markPaid,
+  markFailed,
+  cancelTransaction,
+} = useOperationalTransactions();
+
+async function applyTransactionAction(action: () => Promise<any>) {
+  error.value = '';
+
+  try {
+    await action();
+    await refresh();
+  } catch (err: any) {
+    error.value = err?.message || 'Failed to update transaction.';
+  }
+}
 async function refresh() {
   loading.value = true;
   error.value = '';
 
   try {
-    transactions.value = await api.get(
-      `/api/engagements/${engagementId}/transactions`,
-    );
+    transactions.value = await getEngagementTransactions(engagementId);
   } catch (err: any) {
     error.value = err?.message || 'Failed to load transactions.';
   } finally {
@@ -56,7 +71,15 @@ onMounted(refresh);
         <button class="form-button secondary" @click="refresh">Refresh</button>
       </div>
 
-      <OperationalTransactionTable :transactions="transactions" />
+      <OperationalTransactionTable
+        :transactions="transactions"
+        @mark-processing="
+          (tx) => applyTransactionAction(() => markProcessing(tx.id))
+        "
+        @mark-paid="(tx) => applyTransactionAction(() => markPaid(tx.id))"
+        @mark-failed="(tx) => applyTransactionAction(() => markFailed(tx.id))"
+        @cancel="(tx) => applyTransactionAction(() => cancelTransaction(tx.id))"
+      />
     </section>
   </DashboardShell>
 </template>

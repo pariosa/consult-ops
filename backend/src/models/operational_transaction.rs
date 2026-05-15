@@ -80,4 +80,18 @@ impl OperationalTransaction {
         .fetch_all(db)
         .await
     }
+    pub async fn update_status(db: &SqlitePool, id: i64, status: &str) -> SqlxResult<Self> {
+        sqlx::query_as::<_, OperationalTransaction>(
+            r#"
+        UPDATE operational_transactions
+        SET status = ?
+        WHERE id = ?
+        RETURNING *
+        "#,
+        )
+        .bind(status)
+        .bind(id)
+        .fetch_one(db)
+        .await
+    }
 }

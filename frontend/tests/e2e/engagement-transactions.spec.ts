@@ -49,10 +49,14 @@ test('engagement transactions page renders generated payout obligations', async 
   await expect(
     page.getByText('subcontractor payout', { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText('$20.00')).toBeVisible();
+  await expect(page.getByText('$20.00').first()).toBeVisible();
   await expect(page.getByText('$6.00')).toBeVisible();
-  await expect(page.getByText('pending')).toBeVisible();
-  await expect(page.getByText('paid')).toBeVisible();
+  await expect(
+    page.locator('.status-badge').filter({ hasText: /^pending$/ }),
+  ).toBeVisible();
+  await expect(
+    page.locator('.status-badge').filter({ hasText: /^paid$/ }),
+  ).toBeVisible();
 });
 
 test('engagement transactions page renders empty state', async ({ page }) => {

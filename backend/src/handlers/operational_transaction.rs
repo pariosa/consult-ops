@@ -3,6 +3,8 @@ use actix_web::{HttpResponse, Responder, web};
 use crate::db::Db;
 use crate::models::operational_transaction::OperationalTransaction;
 
+use crate::services::event_service::EventService;
+
 pub async fn list_engagement_transactions(
     db: web::Data<Db>,
     path: web::Path<i64>,
@@ -43,4 +45,122 @@ pub async fn list_organization_transactions(
             HttpResponse::InternalServerError().body(err.to_string())
         }
     }
+}
+async fn apply_transaction_status(
+    db: web::Data<Db>,
+    transaction_id: i64,
+    next_status: &str,
+    event_type: &str,
+) -> HttpResponse {
+    let existing = match sqlx::query_as::<_, OperationalTransaction>(
+        r#"
+        SELECT *
+        FROM operational_transactions
+        WHERE id = ?
+        "#,
+    )
+    .bind(transaction_id)
+    .fetch_one(db.pool.as_ref())
+    .await
+    {
+        Ok(transaction) => transaction,
+        Err(err) => {
+            eprintln!("find operational transaction error: {:?}", err);
+            return HttpResponse::NotFound().body(err.to_string());
+        }
+    };
+
+    let from_status = existing.status.clone();
+
+    let updated =
+        match OperationalTransaction::update_status(db.pool.as_ref(), transaction_id, next_status)
+            .await
+        {
+            Ok(transaction) => transaction,
+            Err(err) => {
+                eprintln!("update transaction status error: {:?}", err);
+                return HttpResponse::InternalServerError().body(err.to_string());
+            }
+        };
+
+    let metadata = serde_json::json!({
+        "transaction_id": updated.id,
+        "agreement_id": updated.agreement_id,
+        "engagement_id": updated.engagement_id,
+        "milestone_id": updated.milestone_id,
+        "from_party_id": updated.from_party_id,
+        "to_party_id": updated.to_party_id,
+        "transaction_type": updated.transaction_type,
+        "amount_cents": updated.amount_cents,
+        "currency": updated.currency,
+        "from_status": from_status,
+        "to_status": next_status
+    });
+
+    let _ = EventService::record_event(
+        db.pool.as_ref(),
+        updated.organization_id,
+        None,
+        "operational_transaction",
+        updated.id,
+        event_type,
+        Some(&from_status),
+        Some(next_status),
+        metadata.clone(),
+    )
+    .await;
+
+    if let Some(engagement_id) = updated.engagement_id {
+        let _ = EventService::record_event(
+            db.pool.as_ref(),
+            updated.organization_id,
+            None,
+            "engagement",
+            engagement_id,
+            event_type,
+            Some(&from_status),
+            Some(next_status),
+            metadata,
+        )
+        .await;
+    }
+
+    HttpResponse::Ok().json(updated)
+}
+
+pub async fn mark_transaction_processing(
+    db: web::Data<Db>,
+    path: web::Path<i64>,
+) -> impl Responder {
+    apply_transaction_status(
+        db,
+        path.into_inner(),
+        "processing",
+        "OperationalTransactionProcessing",
+    )
+    .await
+}
+
+pub async fn mark_transaction_paid(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
+    apply_transaction_status(db, path.into_inner(), "paid", "OperationalTransactionPaid").await
+}
+
+pub async fn mark_transaction_failed(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
+    apply_transaction_status(
+        db,
+        path.into_inner(),
+        "failed",
+        "OperationalTransactionFailed",
+    )
+    .await
+}
+
+pub async fn cancel_transaction(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
+    apply_transaction_status(
+        db,
+        path.into_inner(),
+        "cancelled",
+        "OperationalTransactionCancelled",
+    )
+    .await
 }
