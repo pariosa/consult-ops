@@ -198,3 +198,50 @@ CREATE TABLE IF NOT EXISTS operational_events (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS parties (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    email TEXT,
+    party_type TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS operational_agreements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id INTEGER NOT NULL,
+    engagement_id INTEGER,
+    title TEXT NOT NULL,
+    agreement_type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS agreement_payout_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agreement_id INTEGER NOT NULL,
+    from_party_id INTEGER NOT NULL,
+    to_party_id INTEGER NOT NULL,
+    rule_type TEXT NOT NULL,
+    percent INTEGER,
+    amount_cents INTEGER,
+    trigger_event TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS operational_transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id INTEGER NOT NULL,
+    agreement_id INTEGER,
+    engagement_id INTEGER,
+    milestone_id INTEGER,
+    from_party_id INTEGER NOT NULL,
+    to_party_id INTEGER NOT NULL,
+    transaction_type TEXT NOT NULL,
+    amount_cents INTEGER NOT NULL,
+    currency TEXT NOT NULL DEFAULT 'usd',
+    status TEXT NOT NULL DEFAULT 'pending',
+    trigger_event TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

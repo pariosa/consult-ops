@@ -19,6 +19,11 @@ export const navItems = [
     roles: ['admin', 'consultant', 'client'],
   },
   {
+    label: 'Operations',
+    to: '/organization/operations',
+    roles: ['admin', 'consultant', 'client'],
+  },
+  {
     label: 'Engagements',
     to: '/engagements',
     roles: ['admin', 'consultant', 'client'],
