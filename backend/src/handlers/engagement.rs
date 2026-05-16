@@ -1,10 +1,11 @@
 use crate::db::Db;
 use crate::domain::engagement_state::{EngagementEvent, EngagementStatus};
 use crate::models::engagement::{CreateEngagement, CreateEngagementRequest, Engagement};
+use crate::services::email_notification_service::EmailNotificationService;
 use crate::services::event_service::EventService;
+use crate::services::notification_email_recipient_service::NotificationRecipientService;
 use crate::services::operations_kernel_service::OperationsKernelService;
 use actix_web::{HttpResponse, Responder, web};
-
 #[derive(Debug, serde::Serialize)]
 struct EngagementLifecycleResponse {
     id: i64,
@@ -187,22 +188,104 @@ pub async fn apply_engagement_lifecycle_event(
     }
 }
 pub async fn mark_contract_sent(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
-    let engagement_id = path.into_inner();
+    let engagement_id: i64 = path.into_inner();
 
-    apply_engagement_lifecycle_event(db, engagement_id, None, EngagementEvent::ContractSent).await
+    let response = apply_engagement_lifecycle_event(
+        db.clone(),
+        engagement_id,
+        None,
+        EngagementEvent::ContractSent,
+    )
+    .await;
+
+    if let Ok(engagement) = sqlx::query!(
+        r#"
+        SELECT title
+        FROM engagements
+        WHERE id = ?
+        "#,
+        engagement_id
+    )
+    .fetch_one(db.pool.as_ref())
+    .await
+    {
+        if let Ok(Some(client_email)) =
+            NotificationRecipientService::engagement_client_email(db.pool.as_ref(), engagement_id)
+                .await
+        {
+            if let Err(err) =
+                EmailNotificationService::contract_sent(client_email, engagement.title).await
+            {
+                eprintln!("contract sent email error: {:?}", err);
+            }
+        }
+    }
+
+    response
 }
 
 pub async fn mark_signed(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
     let engagement_id = path.into_inner();
 
-    apply_engagement_lifecycle_event(db, engagement_id, None, EngagementEvent::ContractSigned).await
+    let response = apply_engagement_lifecycle_event(
+        db.clone(),
+        engagement_id,
+        None,
+        EngagementEvent::ContractSigned,
+    )
+    .await;
+
+    if let Ok(engagement) = sqlx::query!(
+        r#"
+        SELECT title
+        FROM engagements
+        WHERE id = ?
+        "#,
+        engagement_id
+    )
+    .fetch_one(db.pool.as_ref())
+    .await
+    {
+        if let Ok(Some(client_email)) =
+            NotificationRecipientService::engagement_client_email(db.pool.as_ref(), engagement_id)
+                .await
+        {
+            if let Err(err) =
+                EmailNotificationService::contract_signed(client_email, engagement.title).await
+            {
+                eprintln!("contract signed email error: {:?}", err);
+            }
+        }
+    }
+
+    response
 }
 
 pub async fn activate_engagement(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
     let engagement_id = path.into_inner();
 
-    apply_engagement_lifecycle_event(db, engagement_id, None, EngagementEvent::PaymentReceived)
+    let response = apply_engagement_lifecycle_event(
+        db.clone(),
+        engagement_id,
+        None,
+        EngagementEvent::PaymentReceived,
+    )
+    .await;
+
+    if let Ok(Some(client_email)) =
+        NotificationRecipientService::engagement_client_email(db.pool.as_ref(), engagement_id).await
+    {
+        if let Err(err) = EmailNotificationService::billing_paid(
+            client_email,
+            format!("engagement {}", engagement_id),
+        )
         .await
+        {
+            eprintln!("activation email error: {:?}", err);
+        }
+    }
+
+    response
 }
 
 pub async fn complete_engagement(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {

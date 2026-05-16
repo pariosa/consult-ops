@@ -4,7 +4,9 @@ use crate::auth::permissions::{can_manage_transactions, can_process_transactions
 use crate::auth_context::AuthUser;
 use crate::db::Db;
 use crate::models::operational_transaction::OperationalTransaction;
+use crate::services::email_notification_service::EmailNotificationService;
 use crate::services::event_service::EventService;
+use crate::services::notification_email_recipient_service::NotificationRecipientService;
 
 pub async fn list_engagement_transactions(
     db: web::Data<Db>,
@@ -140,7 +142,45 @@ async fn apply_transaction_status(
         )
         .await;
     }
+    if next_status == "paid" {
+        match NotificationRecipientService::transaction_party_emails(db.pool.as_ref(), updated.id)
+            .await
+        {
+            Ok(emails) => {
+                for email in emails {
+                    if let Err(err) =
+                        EmailNotificationService::transaction_paid(email, updated.amount_cents)
+                            .await
+                    {
+                        eprintln!("transaction paid email error: {:?}", err);
+                    }
+                }
+            }
+            Err(err) => {
+                eprintln!("transaction paid recipient lookup error: {:?}", err);
+            }
+        }
+    }
 
+    if next_status == "failed" {
+        match NotificationRecipientService::transaction_party_emails(db.pool.as_ref(), updated.id)
+            .await
+        {
+            Ok(emails) => {
+                for email in emails {
+                    if let Err(err) =
+                        EmailNotificationService::transaction_failed(email, updated.amount_cents)
+                            .await
+                    {
+                        eprintln!("transaction failed email error: {:?}", err);
+                    }
+                }
+            }
+            Err(err) => {
+                eprintln!("transaction failed recipient lookup error: {:?}", err);
+            }
+        }
+    }
     HttpResponse::Ok().json(updated)
 }
 

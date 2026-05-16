@@ -6,9 +6,51 @@ use crate::models::engagement_milestone::{
     UpdateEngagementMilestoneRequest,
 };
 use crate::models::operational_agreement::OperationalAgreement;
+use crate::services::email_notification_service::EmailNotificationService;
 use crate::services::event_service::EventService;
+use crate::services::notification_email_recipient_service::NotificationRecipientService;
 use crate::services::transaction_workflow_service::TransactionWorkflowService;
 
+async fn notify_milestone_parties(
+    db: &Db,
+    engagement_id: i64,
+    milestone_title: String,
+    notification_type: &str,
+) {
+    if let Ok(Some(agreement)) =
+        OperationalAgreement::latest_for_engagement(db.pool.as_ref(), engagement_id).await
+    {
+        match NotificationRecipientService::agreement_party_emails(db.pool.as_ref(), agreement.id)
+            .await
+        {
+            Ok(emails) => {
+                for email in emails {
+                    let result = match notification_type {
+                        "approved" => {
+                            EmailNotificationService::milestone_approved(
+                                email,
+                                milestone_title.clone(),
+                            )
+                            .await
+                        }
+                        "paid" => {
+                            EmailNotificationService::milestone_paid(email, milestone_title.clone())
+                                .await
+                        }
+                        _ => Ok(()),
+                    };
+
+                    if let Err(err) = result {
+                        eprintln!("milestone notification email error: {:?}", err);
+                    }
+                }
+            }
+            Err(err) => {
+                eprintln!("agreement_party_emails lookup error: {:?}", err);
+            }
+        }
+    }
+}
 async fn record_milestone_and_engagement_event(
     db: &Db,
     organization_id: i64,
@@ -233,7 +275,7 @@ pub async fn approve_engagement_milestone(
                     }
                 }
             }
-
+            notify_milestone_parties(&db, item.engagement_id, item.title.clone(), "approved").await;
             HttpResponse::Ok().json(item)
         }
 
@@ -272,6 +314,7 @@ pub async fn mark_engagement_milestone_paid(
                     }),
                 )
                 .await;
+                notify_milestone_parties(&db, item.engagement_id, item.title.clone(), "paid").await;
             }
             HttpResponse::Ok().json(item)
         }

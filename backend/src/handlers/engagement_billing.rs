@@ -3,7 +3,9 @@ use crate::domain::engagement_state::{EngagementEvent, EngagementStatus};
 use crate::models::engagement_billing::{
     CreateEngagementBillingRequest, EngagementBilling, UpdateCheckoutSessionRequest,
 };
+use crate::services::email_notification_service::EmailNotificationService;
 use crate::services::event_service::EventService;
+use crate::services::notification_email_recipient_service::NotificationRecipientService;
 use crate::services::operations_kernel_service::OperationsKernelService;
 use actix_web::{HttpResponse, Responder, web};
 use sqlx::{Result, SqlitePool};
@@ -445,7 +447,25 @@ pub async fn create_activation_checkout(db: web::Data<Db>, path: web::Path<i64>)
         Some(&updated_billing.status),
     )
     .await;
-
+    if let Some(url) = checkout_url.clone() {
+        match NotificationRecipientService::engagement_client_email(db.pool.as_ref(), engagement_id)
+            .await
+        {
+            Ok(Some(client_email)) => {
+                if let Err(err) =
+                    EmailNotificationService::activation_checkout(client_email, url).await
+                {
+                    eprintln!("activation checkout email error: {:?}", err);
+                }
+            }
+            Ok(None) => {
+                eprintln!("No client email found for engagement {}", engagement_id);
+            }
+            Err(err) => {
+                eprintln!("engagement_client_email lookup error: {:?}", err);
+            }
+        }
+    }
     HttpResponse::Ok().json(serde_json::json!({
         "billing": updated_billing,
         "checkout_session_id": session_id,
