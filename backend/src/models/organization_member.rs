@@ -1,3 +1,4 @@
+use crate::services::email_notification_service::EmailNotificationService;
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Result as SqlxResult, SqlitePool};
 

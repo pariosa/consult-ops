@@ -14,18 +14,15 @@ impl EmailNotificationService {
         let mode = std::env::var("EMAIL_MODE").unwrap_or_else(|_| "dev".to_string());
 
         if mode == "dev" {
-            println!("DEV EMAIL >>>");
+            println!("\n========== DEV EMAIL ==========");
             println!("TO: {}", message.to);
             println!("SUBJECT: {}", message.subject);
             println!("BODY:\n{}", message.body);
-            println!("<<< DEV EMAIL");
-
+            println!("===============================\n");
             return Ok(());
         }
 
-        // Provider integration goes here later.
-        // Keep endpoint code stable.
-        Err("EMAIL_MODE provider not configured".to_string())
+        Err("No production email provider configured.".to_string())
     }
 
     pub async fn invitation(to: String, role: String, invite_url: String) -> Result<(), String> {
@@ -42,13 +39,13 @@ impl EmailNotificationService {
 
     pub async fn invitation_accepted(
         to: String,
-        email: String,
+        accepted_email: String,
         role: String,
     ) -> Result<(), String> {
         Self::send(EmailMessage {
             to,
             subject: "Organization invitation accepted".to_string(),
-            body: format!("{} accepted their invitation as {}.", email, role),
+            body: format!("{} accepted their invitation as {}.", accepted_email, role),
         })
         .await
     }
@@ -80,7 +77,7 @@ impl EmailNotificationService {
         .await
     }
 
-    pub async fn payment_received(to: String, label: String) -> Result<(), String> {
+    pub async fn billing_paid(to: String, label: String) -> Result<(), String> {
         Self::send(EmailMessage {
             to,
             subject: "Payment received".to_string(),

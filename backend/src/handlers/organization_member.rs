@@ -9,6 +9,7 @@ use crate::models::organization_invitation::{
     CreateOrganizationInvitation, OrganizationInvitation,
 };
 use crate::models::organization_member::OrganizationMember;
+use crate::services::email_notification_service::EmailNotificationService;
 use crate::services::event_service::EventService;
 
 pub async fn list_organization_members(
@@ -118,7 +119,15 @@ pub async fn invite_organization_member(
                 }),
             )
             .await;
-
+            if let Err(err) = EmailNotificationService::invitation(
+                invitation.email.clone(),
+                invitation.role.clone(),
+                invite_url.clone(),
+            )
+            .await
+            {
+                eprintln!("invitation email error: {:?}", err);
+            }
             HttpResponse::Created().json(serde_json::json!({
                 "invitation": invitation,
                 "invite_url": invite_url,
@@ -209,7 +218,21 @@ pub async fn accept_organization_invitation(
                 }),
             )
             .await;
-
+            if let Some(invited_by_user_id) = invitation.invited_by_user_id {
+                if let Ok(admin_email) =
+                    sqlx::query_scalar::<_, String>("SELECT email FROM users WHERE id = ?")
+                        .bind(invited_by_user_id)
+                        .fetch_one(db.pool.as_ref())
+                        .await
+                {
+                    let _ = EmailNotificationService::invitation_accepted(
+                        admin_email,
+                        auth.email.clone(),
+                        invitation.role.clone(),
+                    )
+                    .await;
+                }
+            }
             HttpResponse::Ok().json(member)
         }
         Err(err) => {
