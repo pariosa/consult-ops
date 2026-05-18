@@ -1,56 +1,113 @@
-// frontend/utils/navItems.ts
+export type UserType =
+  | 'super_admin'
+  | 'owner'
+  | 'admin'
+  | 'finance_admin'
+  | 'operations_manager'
+  | 'contractor'
+  | 'client_viewer'
+  | 'consultant'
+  | 'client'
+  | 'member';
 
-export type UserType = 'admin' | 'consultant' | 'client';
+const allOrgRoles: UserType[] = [
+  'owner',
+  'admin',
+  'finance_admin',
+  'operations_manager',
+  'contractor',
+  'client_viewer',
+  'consultant',
+  'client',
+  'member',
+];
+
+const opsRoles: UserType[] = [
+  'owner',
+  'admin',
+  'finance_admin',
+  'operations_manager',
+  'consultant',
+];
+
+const financeRoles: UserType[] = ['owner', 'admin', 'finance_admin'];
+const adminRoles: UserType[] = ['owner', 'admin'];
+const platformRoles: UserType[] = ['super_admin'];
 
 export const navItems = [
   {
+    label: 'Platform Admin',
+    to: '/platform',
+    roles: platformRoles,
+  },
+  {
     label: 'Admin Home',
     to: '/admin',
-    roles: ['admin'],
+    roles: ['admin', 'owner', 'super_admin'],
   },
   {
     label: 'Users',
     to: '/admin/users',
-    roles: ['admin'],
+    roles: ['admin', 'owner', 'super_admin'],
   },
   {
-    label: 'Organization',
+    label: 'Notifications',
+    to: '/notifications',
+    roles: ['super_admin', ...allOrgRoles],
+  },
+  {
+    label: 'Organization HQ',
     to: '/organization',
-    roles: ['admin', 'consultant', 'client'],
-  },
-  {
-    label: 'Operations',
-    to: '/organization/operations',
-    roles: ['admin', 'consultant', 'client'],
-  },
-  {
-    label: 'Engagements',
-    to: '/engagements',
-    roles: ['admin', 'consultant', 'client'],
+    roles: ['super_admin', ...allOrgRoles],
   },
   {
     label: 'Members',
     to: '/organization/members',
-    roles: ['admin', 'consultant'],
+    roles: ['super_admin', ...adminRoles],
   },
   {
-    label: 'Clients',
-    to: '/clients',
-    roles: ['admin', 'consultant'],
+    label: 'Invitations',
+    to: '/organization/invitations',
+    roles: ['super_admin', ...adminRoles],
+  },
+  {
+    label: 'Engagements',
+    to: '/engagements',
+    roles: ['super_admin', ...allOrgRoles],
+  },
+  {
+    label: 'Agreements',
+    to: '/engagements/1/agreements',
+    roles: ['super_admin', ...financeRoles],
+  },
+  {
+    label: 'Operational Finance',
+    to: '/organization/finance',
+    roles: ['super_admin', ...financeRoles],
+  },
+  {
+    label: 'Transactions',
+    to: '/organization/transactions',
+    roles: ['super_admin', ...financeRoles, 'operations_manager'],
   },
   {
     label: 'Projects',
     to: '/organization/projects',
-    roles: ['admin', 'consultant', 'client'],
+    roles: ['super_admin', ...allOrgRoles],
+  },
+  {
+    label: 'Clients',
+    to: '/organization/clients',
+    roles: ['super_admin', ...opsRoles, 'client_viewer'],
   },
   {
     label: 'Billing',
     to: '/settings/billing',
-    roles: ['admin', 'consultant'],
+    roles: ['super_admin', ...financeRoles],
   },
   {
     label: 'Profile',
     to: '/profile',
-    roles: ['admin', 'consultant', 'client'],
+    roles: ['super_admin', ...allOrgRoles],
   },
 ];

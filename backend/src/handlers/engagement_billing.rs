@@ -6,6 +6,7 @@ use crate::models::engagement_billing::{
 use crate::services::email_notification_service::EmailNotificationService;
 use crate::services::event_service::EventService;
 use crate::services::notification_email_recipient_service::NotificationRecipientService;
+use crate::services::notification_service::NotificationService;
 use crate::services::operations_kernel_service::OperationsKernelService;
 use actix_web::{HttpResponse, Responder, web};
 use sqlx::{Result, SqlitePool};
@@ -452,8 +453,17 @@ pub async fn create_activation_checkout(db: web::Data<Db>, path: web::Path<i64>)
             .await
         {
             Ok(Some(client_email)) => {
-                if let Err(err) =
-                    EmailNotificationService::activation_checkout(client_email, url).await
+                if let Err(err) = NotificationService::notify_email(
+                    db.pool.as_ref(),
+                    updated_billing.organization_id,
+                    client_email,
+                    "activation_checkout",
+                    "Activation payment required",
+                    &format!("Complete your activation payment here:\n{}", url),
+                    Some("engagement_billing"),
+                    Some(updated_billing.id),
+                )
+                .await
                 {
                     eprintln!("activation checkout email error: {:?}", err);
                 }

@@ -5,6 +5,7 @@ pub mod engagement;
 pub mod engagement_billing;
 pub mod engagement_milestone;
 mod invoice;
+pub mod notification;
 pub mod operational_agreement;
 pub mod operational_event;
 pub mod operational_finance;
@@ -35,6 +36,9 @@ pub use organization_member::{
     list_organization_members,
 };
 
+pub use notification::{
+    list_my_notifications, mark_all_notifications_read, mark_notification_read,
+};
 pub use organization::*;
 pub use payment::{create_payment, get_payments};
 pub use project::{create_project, get_projects};

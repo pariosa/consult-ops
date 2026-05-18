@@ -4,6 +4,7 @@ use crate::models::engagement::{CreateEngagement, CreateEngagementRequest, Engag
 use crate::services::email_notification_service::EmailNotificationService;
 use crate::services::event_service::EventService;
 use crate::services::notification_email_recipient_service::NotificationRecipientService;
+use crate::services::notification_service::NotificationService;
 use crate::services::operations_kernel_service::OperationsKernelService;
 use actix_web::{HttpResponse, Responder, web};
 #[derive(Debug, serde::Serialize)]
@@ -200,9 +201,9 @@ pub async fn mark_contract_sent(db: web::Data<Db>, path: web::Path<i64>) -> impl
 
     if let Ok(engagement) = sqlx::query!(
         r#"
-        SELECT title
+        SELECT title, organization_id
         FROM engagements
-        WHERE id = ?
+        WHERE id = ?  
         "#,
         engagement_id
     )
@@ -213,10 +214,19 @@ pub async fn mark_contract_sent(db: web::Data<Db>, path: web::Path<i64>) -> impl
             NotificationRecipientService::engagement_client_email(db.pool.as_ref(), engagement_id)
                 .await
         {
-            if let Err(err) =
-                EmailNotificationService::contract_sent(client_email, engagement.title).await
+            if let Err(err) = NotificationService::notify_email(
+                db.pool.as_ref(),
+                engagement.organization_id,
+                client_email,
+                "contract_sent",
+                "Contract sent for review",
+                &format!("A contract has been sent for review: {}", engagement.title),
+                Some("engagement"),
+                Some(engagement_id),
+            )
+            .await
             {
-                eprintln!("contract sent email error: {:?}", err);
+                eprintln!("contract sent notification error: {:?}", err);
             }
         }
     }
@@ -237,9 +247,9 @@ pub async fn mark_signed(db: web::Data<Db>, path: web::Path<i64>) -> impl Respon
 
     if let Ok(engagement) = sqlx::query!(
         r#"
-        SELECT title
-        FROM engagements
-        WHERE id = ?
+            SELECT title, organization_id
+            FROM engagements
+            WHERE id = ?
         "#,
         engagement_id
     )
@@ -250,10 +260,19 @@ pub async fn mark_signed(db: web::Data<Db>, path: web::Path<i64>) -> impl Respon
             NotificationRecipientService::engagement_client_email(db.pool.as_ref(), engagement_id)
                 .await
         {
-            if let Err(err) =
-                EmailNotificationService::contract_signed(client_email, engagement.title).await
+            if let Err(err) = NotificationService::notify_email(
+                db.pool.as_ref(),
+                engagement.organization_id,
+                client_email,
+                "contract_signed",
+                "Contract signed",
+                &format!("A contract has been signed: {}", engagement.title),
+                Some("engagement"),
+                Some(engagement_id),
+            )
+            .await
             {
-                eprintln!("contract signed email error: {:?}", err);
+                eprintln!("contract signed notification error: {:?}", err);
             }
         }
     }

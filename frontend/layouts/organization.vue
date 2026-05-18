@@ -8,6 +8,11 @@ const { canManageFinance, canManageAgreements, canProcessTransactions, role } =
 const navItems = computed(() =>
   [
     {
+      label: 'Notifications',
+      to: '/notifications',
+      show: true,
+    },
+    {
       label: 'Organization HQ',
       to: '/organization',
       show: true,
@@ -37,6 +42,7 @@ const navItems = computed(() =>
       to: '/clients',
       show: true,
     },
+
     {
       label: 'Engagements',
       to: '/engagements',

@@ -8,9 +8,9 @@ use crate::db::Db;
 use crate::models::organization_invitation::{
     CreateOrganizationInvitation, OrganizationInvitation,
 };
-use crate::models::organization_member::OrganizationMember;
-use crate::services::email_notification_service::EmailNotificationService;
+use crate::models::organization_member::OrganizationMember; 
 use crate::services::event_service::EventService;
+use crate::services::notification_service::NotificationService;
 
 pub async fn list_organization_members(
     db: web::Data<Db>,
@@ -119,12 +119,21 @@ pub async fn invite_organization_member(
                 }),
             )
             .await;
-            if let Err(err) = EmailNotificationService::invitation(
-                invitation.email.clone(),
-                invitation.role.clone(),
-                invite_url.clone(),
-            )
-            .await
+            if let Err(err) = NotificationService::notify_email(
+    db.pool.as_ref(),
+    invitation.organization_id, 
+    invitation.email.clone(),
+    "organization_invitation_created",
+    "You're invited to join Consult Ops",
+    &format!(
+        "You've been invited to join Consult Ops as {}.\n\nAccept your invitation here:\n{}",
+        invitation.role,
+        invite_url
+    ),
+    Some("organization_invitation"),
+    Some(invitation.id),
+)
+.await
             {
                 eprintln!("invitation email error: {:?}", err);
             }
@@ -225,10 +234,18 @@ pub async fn accept_organization_invitation(
                         .fetch_one(db.pool.as_ref())
                         .await
                 {
-                    let _ = EmailNotificationService::invitation_accepted(
+                    let _ = NotificationService::notify_email(
+                        db.pool.as_ref(),
+                        invitation.organization_id, 
                         admin_email,
-                        auth.email.clone(),
-                        invitation.role.clone(),
+                        "organization_invitation_accepted",
+                        "Organization invitation accepted",
+                        &format!(
+                            "{} accepted their invitation as {}.",
+                            auth.email, invitation.role
+                        ),
+                        Some("organization_member"),
+                        Some(member.id),
                     )
                     .await;
                 }

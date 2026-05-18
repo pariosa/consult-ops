@@ -6,9 +6,9 @@ use crate::models::engagement_milestone::{
     UpdateEngagementMilestoneRequest,
 };
 use crate::models::operational_agreement::OperationalAgreement;
-use crate::services::email_notification_service::EmailNotificationService;
 use crate::services::event_service::EventService;
 use crate::services::notification_email_recipient_service::NotificationRecipientService;
+use crate::services::notification_service::NotificationService;
 use crate::services::transaction_workflow_service::TransactionWorkflowService;
 
 async fn notify_milestone_parties(
@@ -17,37 +17,58 @@ async fn notify_milestone_parties(
     milestone_title: String,
     notification_type: &str,
 ) {
-    if let Ok(Some(agreement)) =
-        OperationalAgreement::latest_for_engagement(db.pool.as_ref(), engagement_id).await
-    {
+    let agreement =
+        match OperationalAgreement::latest_for_engagement(db.pool.as_ref(), engagement_id).await {
+            Ok(Some(agreement)) => agreement,
+            Ok(None) => {
+                eprintln!("No agreement found for engagement {}", engagement_id);
+                return;
+            }
+            Err(err) => {
+                eprintln!("latest_for_engagement lookup error: {:?}", err);
+                return;
+            }
+        };
+
+    let emails =
         match NotificationRecipientService::agreement_party_emails(db.pool.as_ref(), agreement.id)
             .await
         {
-            Ok(emails) => {
-                for email in emails {
-                    let result = match notification_type {
-                        "approved" => {
-                            EmailNotificationService::milestone_approved(
-                                email,
-                                milestone_title.clone(),
-                            )
-                            .await
-                        }
-                        "paid" => {
-                            EmailNotificationService::milestone_paid(email, milestone_title.clone())
-                                .await
-                        }
-                        _ => Ok(()),
-                    };
-
-                    if let Err(err) = result {
-                        eprintln!("milestone notification email error: {:?}", err);
-                    }
-                }
-            }
+            Ok(emails) => emails,
             Err(err) => {
                 eprintln!("agreement_party_emails lookup error: {:?}", err);
+                return;
             }
+        };
+
+    for email in emails {
+        let (notification_key, title, body) = match notification_type {
+            "approved" => (
+                "milestone_approved",
+                "Milestone approved",
+                format!("Milestone approved: {}", milestone_title),
+            ),
+            "paid" => (
+                "milestone_paid",
+                "Milestone marked paid",
+                format!("Milestone marked paid: {}", milestone_title),
+            ),
+            _ => continue,
+        };
+
+        if let Err(err) = NotificationService::notify_email(
+            db.pool.as_ref(),
+            agreement.organization_id,
+            email,
+            notification_key,
+            title,
+            &body,
+            Some("engagement"),
+            Some(engagement_id),
+        )
+        .await
+        {
+            eprintln!("milestone notification error: {:?}", err);
         }
     }
 }
@@ -260,7 +281,9 @@ pub async fn approve_engagement_milestone(
                 )
                 .await
                 {
-                    if let Err(err) = TransactionWorkflowService::generate_transactions_for_trigger(
+                    println!("Latest agreement found for milestone approval.");
+
+                    match TransactionWorkflowService::generate_transactions_for_trigger(
                         db.pool.as_ref(),
                         organization_id,
                         agreement.id,
@@ -271,9 +294,14 @@ pub async fn approve_engagement_milestone(
                     )
                     .await
                     {
-                        eprintln!("generate_transactions_for_trigger error: {:?}", err);
+                        Ok(_) => println!("Transaction generation completed."),
+                        Err(err) => eprintln!("generate_transactions_for_trigger error: {:?}", err),
                     }
                 }
+                println!(
+                    "Milestone approved: organization_id={}, engagement_id={}, milestone_id={}, amount_cents={}",
+                    organization_id, item.engagement_id, milestone_id, item.amount_cents
+                );
             }
             notify_milestone_parties(&db, item.engagement_id, item.title.clone(), "approved").await;
             HttpResponse::Ok().json(item)

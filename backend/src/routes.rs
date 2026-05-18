@@ -16,14 +16,14 @@ use crate::handlers::{
     get_payments, get_project_portal_summary, get_projects, get_user_by_id, get_users,
     invite_organization_member, list_agreement_payout_rules, list_engagement_billing,
     list_engagement_events, list_engagement_milestones, list_engagement_transactions,
-    list_for_project, list_organization_agreements, list_organization_events,
-    list_organization_invitations, list_organization_members, list_organization_parties,
-    list_organization_transactions, list_platform_organization_members,
-    list_platform_organizations, list_platform_users, mark_billing_paid, mark_contract_sent,
-    mark_engagement_milestone_paid, mark_signed, mark_transaction_failed, mark_transaction_paid,
-    mark_transaction_processing, reopen_engagement_milestone, show, stripe_webhook,
-    submit_engagement_milestone, update_engagement_milestone, update_organization,
-    update_organization_member, update_user_type,
+    list_for_project, list_my_notifications, list_organization_agreements,
+    list_organization_events, list_organization_invitations, list_organization_members,
+    list_organization_parties, list_organization_transactions, list_platform_organization_members,
+    list_platform_organizations, list_platform_users, mark_all_notifications_read,
+    mark_billing_paid, mark_contract_sent, mark_engagement_milestone_paid, mark_notification_read,
+    mark_signed, mark_transaction_failed, mark_transaction_paid, mark_transaction_processing,
+    reopen_engagement_milestone, show, stripe_webhook, submit_engagement_milestone,
+    update_engagement_milestone, update_organization, update_organization_member, update_user_type,
 };
 use actix_web::web;
 pub fn config(cfg: &mut web::ServiceConfig) {
@@ -308,6 +308,15 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route(
                 "/platform/organizations/{id}/members",
                 web::post().to(assign_platform_user_to_organization),
+            )
+            .route("/notifications", web::get().to(list_my_notifications))
+            .route(
+                "/notifications/read-all",
+                web::post().to(mark_all_notifications_read),
+            )
+            .route(
+                "/notifications/{id}/read",
+                web::post().to(mark_notification_read),
             ),
     );
 }

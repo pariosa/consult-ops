@@ -7,6 +7,7 @@ use crate::models::operational_transaction::OperationalTransaction;
 use crate::services::email_notification_service::EmailNotificationService;
 use crate::services::event_service::EventService;
 use crate::services::notification_email_recipient_service::NotificationRecipientService;
+use crate::services::notification_service::NotificationService;
 
 pub async fn list_engagement_transactions(
     db: web::Data<Db>,
@@ -148,9 +149,20 @@ async fn apply_transaction_status(
         {
             Ok(emails) => {
                 for email in emails {
-                    if let Err(err) =
-                        EmailNotificationService::transaction_paid(email, updated.amount_cents)
-                            .await
+                    if let Err(err) = NotificationService::notify_email(
+                        db.pool.as_ref(),
+                        updated.organization_id,
+                        email,
+                        "transaction_paid",
+                        "Transaction marked paid",
+                        &format!(
+                            "A transaction for ${:.2} was marked paid.",
+                            updated.amount_cents as f64 / 100.0
+                        ),
+                        Some("operational_transaction"),
+                        Some(updated.id),
+                    )
+                    .await
                     {
                         eprintln!("transaction paid email error: {:?}", err);
                     }
@@ -161,18 +173,28 @@ async fn apply_transaction_status(
             }
         }
     }
-
     if next_status == "failed" {
         match NotificationRecipientService::transaction_party_emails(db.pool.as_ref(), updated.id)
             .await
         {
             Ok(emails) => {
                 for email in emails {
-                    if let Err(err) =
-                        EmailNotificationService::transaction_failed(email, updated.amount_cents)
-                            .await
+                    if let Err(err) = NotificationService::notify_email(
+                        db.pool.as_ref(),
+                        updated.organization_id,
+                        email,
+                        "transaction_failed",
+                        "Transaction failed",
+                        &format!(
+                            "A transaction for ${:.2} failed.",
+                            updated.amount_cents as f64 / 100.0
+                        ),
+                        Some("operational_transaction"),
+                        Some(updated.id),
+                    )
+                    .await
                     {
-                        eprintln!("transaction failed email error: {:?}", err);
+                        eprintln!("transaction failed notification error: {:?}", err);
                     }
                 }
             }

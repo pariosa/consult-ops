@@ -92,7 +92,15 @@ impl TransactionWorkflowService {
             )
             .await
             .map_err(|err| err.to_string())?;
-
+            println!(
+                "Generating transactions: org={} agreement={} engagement={:?} milestone={:?} trigger={} base_amount={}",
+                organization_id,
+                agreement_id,
+                engagement_id,
+                milestone_id,
+                trigger_event,
+                base_amount_cents
+            );
             let _ = EventService::record_event(
                 pool,
                 organization_id,
@@ -114,7 +122,15 @@ impl TransactionWorkflowService {
                 }),
             )
             .await;
-
+            println!(
+                "Rule {} type={} from={} to={} percent={:?} amount={:?}",
+                rule.id,
+                rule.rule_type,
+                rule.from_party_id,
+                rule.to_party_id,
+                rule.percent,
+                rule.amount_cents
+            );
             if let Some(engagement_id) = engagement_id {
                 let _ = EventService::record_event(
                     pool,

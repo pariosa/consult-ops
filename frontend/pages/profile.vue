@@ -13,32 +13,22 @@ onMounted(() => {
   const raw = localStorage.getItem('auth_user');
   user.value = raw ? JSON.parse(raw) : null;
 });
+
+import { useAuth } from '~/composables/useAuth';
+
+const { authUser } = useAuth();
 </script>
 
 <template>
-  <DashboardShell title="Profile" subtitle="Manage your account details.">
-    <section class="panel">
-      <p class="eyebrow">Profile</p>
-      <h1>My Account</h1>
-
-      <dl v-if="user">
-        <div>
-          <dt>Email</dt>
-          <dd>{{ user.email }}</dd>
-        </div>
-
-        <div>
-          <dt>User ID</dt>
-          <dd>{{ user.id || user.user_id || '—' }}</dd>
-        </div>
-
-        <div>
-          <dt>User Type</dt>
-          <dd>{{ user.user_type || user.role || '—' }}</dd>
-        </div>
-      </dl>
-
-      <p v-else>No user session found.</p>
+  <DashboardShell
+    title="Profile"
+    subtitle="Your account and workspace identity."
+  >
+    <section class="portal-section">
+      <p class="eyebrow">Account</p>
+      <h2>{{ authUser?.name || authUser?.email }}</h2>
+      <p>{{ authUser?.email }}</p>
+      <p>{{ authUser?.user_type || authUser?.role }}</p>
     </section>
   </DashboardShell>
 </template>
