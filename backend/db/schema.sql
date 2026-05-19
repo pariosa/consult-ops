@@ -222,11 +222,15 @@ CREATE TABLE IF NOT EXISTS parties (
     name TEXT NOT NULL,
     email TEXT,
     party_type TEXT NOT NULL,
+    is_verified INTEGER NOT NULL DEFAULT 0,
+
+    verification_status TEXT NOT NULL DEFAULT 'unverified',
+    verified_at TEXT,
+    verification_method TEXT,
 
     linked_user_id INTEGER,
     linked_client_id INTEGER,
     linked_organization_id INTEGER,
-    is_verified INTEGER NOT NULL DEFAULT 0,
 
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -291,6 +295,28 @@ CREATE TABLE IF NOT EXISTS notification_jobs (
     attempts INTEGER NOT NULL DEFAULT 0,
     last_error TEXT,
     run_after TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE party_payment_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    party_id INTEGER NOT NULL,
+    organization_id INTEGER NOT NULL,
+
+    payment_role TEXT NOT NULL, -- payer, payee, both
+
+    stripe_customer_id TEXT,
+    stripe_payment_method_id TEXT,
+    payer_authorization_status TEXT NOT NULL DEFAULT 'not_configured',
+    payer_authorized_at TEXT,
+    payer_authorization_scope TEXT, -- single_milestone, engagement, agreement
+
+    stripe_connect_account_id TEXT,
+    stripe_connect_onboarding_status TEXT NOT NULL DEFAULT 'not_started',
+    payout_status TEXT NOT NULL DEFAULT 'not_ready',
+    payout_verified_at TEXT,
+
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

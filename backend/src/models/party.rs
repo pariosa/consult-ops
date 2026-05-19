@@ -8,10 +8,15 @@ pub struct Party {
     pub name: String,
     pub email: Option<String>,
     pub party_type: String,
+    pub is_verified: i64,
+
+    pub verification_status: String,
+    pub verified_at: Option<String>,
+    pub verification_method: Option<String>,
+
     pub linked_user_id: Option<i64>,
     pub linked_client_id: Option<i64>,
     pub linked_organization_id: Option<i64>,
-    pub is_verified: Option<i64>,
     pub created_at: String,
 }
 
@@ -24,6 +29,8 @@ pub struct CreateParty {
     pub linked_client_id: Option<i64>,
     pub linked_organization_id: Option<i64>,
     pub is_verified: Option<i64>,
+    pub verification_status: Option<String>,
+    pub verification_method: Option<String>,
 }
 
 impl Party {
@@ -32,35 +39,54 @@ impl Party {
         organization_id: i64,
         payload: CreateParty,
     ) -> SqlxResult<Self> {
+        let is_verified = payload.is_verified.unwrap_or(0);
+
+        let verification_status = payload.verification_status.unwrap_or_else(|| {
+            if is_verified == 1 {
+                "verified".to_string()
+            } else {
+                "unverified".to_string()
+            }
+        });
+
         sqlx::query_as::<_, Party>(
             r#"
-            INSERT INTO parties (
-                organization_id,
-                name,
-                email,
-                party_type,
-                linked_user_id,
-                linked_client_id,
-                linked_organization_id,
-                is_verified,
-                created_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-            RETURNING * 
-            "#,
+        INSERT INTO parties (
+            organization_id,
+            name,
+            email,
+            party_type,
+            is_verified,
+            verification_status,
+            verified_at,
+            verification_method,
+            linked_user_id,
+            linked_client_id,
+            linked_organization_id,
+            created_at
+        )
+        VALUES (
+            ?, ?, ?, ?, ?, ?,
+            CASE WHEN ? = 1 THEN datetime('now') ELSE NULL END,
+            ?, ?, ?, ?, datetime('now')
+        )
+        RETURNING *
+        "#,
         )
         .bind(organization_id)
         .bind(payload.name)
         .bind(payload.email)
         .bind(payload.party_type)
+        .bind(is_verified)
+        .bind(verification_status)
+        .bind(is_verified)
+        .bind(payload.verification_method)
         .bind(payload.linked_user_id)
         .bind(payload.linked_client_id)
         .bind(payload.linked_organization_id)
-        .bind(payload.is_verified.unwrap_or(0))
         .fetch_one(db)
         .await
     }
-
     pub async fn for_organization(db: &SqlitePool, organization_id: i64) -> SqlxResult<Vec<Self>> {
         sqlx::query_as::<_, Party>(
             r#"
@@ -101,31 +127,37 @@ impl Party {
 
         sqlx::query_as::<_, Party>(
             r#"
-        INSERT INTO parties (
-            organization_id,
-            name,
-            email,
-            party_type,
-            linked_user_id,
-            linked_client_id,
-            linked_organization_id,
-            is_verified,
-            created_at
-        )
-        SELECT
-            ?,
-            COALESCE(name, email),
-            email,
-            ?,
-            id,
-            NULL,
-            ?,
-            1,
-            datetime('now')
-        FROM users
-        WHERE id = ?
-        RETURNING *
-        "#,
+            INSERT INTO parties (
+                organization_id,
+                name,
+                email,
+                party_type,
+                linked_user_id,
+                linked_client_id,
+                linked_organization_id,
+                is_verified,
+                verification_status,
+                verified_at,
+                verification_method,
+                created_at
+            )
+            SELECT
+                ?,
+                COALESCE(name, email),
+                email,
+                ?,
+                id,
+                NULL,
+                ?,
+                1,
+                'verified',
+                datetime('now'),
+                'linked_user',
+                datetime('now')
+            FROM users
+            WHERE id = ?
+            RETURNING *
+            "#,
         )
         .bind(organization_id)
         .bind(party_type)
@@ -159,32 +191,38 @@ impl Party {
 
         sqlx::query_as::<_, Party>(
             r#"
-        INSERT INTO parties (
-            organization_id,
-            name,
-            email,
-            party_type,
-            linked_user_id,
-            linked_client_id,
-            linked_organization_id,
-            is_verified,
-            created_at
-        )
-        SELECT
-            organization_id,
-            COALESCE(company_name, name),
-            email,
-            'client',
-            NULL,
-            id,
-            NULL,
-            1,
-            datetime('now')
-        FROM clients
-        WHERE id = ?
-          AND organization_id = ?
-        RETURNING *
-        "#,
+                INSERT INTO parties (
+                    organization_id,
+                    name,
+                    email,
+                    party_type,
+                    linked_user_id,
+                    linked_client_id,
+                    linked_organization_id,
+                    is_verified,
+                    verification_status,
+                    verified_at,
+                    verification_method,
+                    created_at
+                )
+                SELECT
+                    organization_id,
+                    COALESCE(company_name, name),
+                    email,
+                    'client',
+                    NULL,
+                    id,
+                    NULL,
+                    1,
+                    'verified',
+                    datetime('now'),
+                    'linked_client',
+                    datetime('now')
+                FROM clients
+                WHERE id = ?
+                AND organization_id = ?
+                RETURNING *
+                "#,
         )
         .bind(client_id)
         .bind(organization_id)

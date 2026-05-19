@@ -2,7 +2,7 @@ use actix_web::{App, test, web};
 use backend::db::Db;
 use backend::domain::engagement_state::EngagementEvent;
 use backend::domain::engagement_state::EngagementStatus;
-use backend::handlers::{engagement, engagement_milestone, software_contract};
+use backend::handlers::{contract_templates, engagement, engagement_milestone};
 use backend::services::operations_kernel_service::OperationsKernelService;
 use serde_json::json;
 use sqlx::{Executor, SqlitePool};
@@ -193,7 +193,7 @@ fn app_config(cfg: &mut web::ServiceConfig) {
             )
             .route(
                 "/engagements/{id}/software-contract",
-                web::post().to(software_contract::generate_for_engagement),
+                web::post().to(contract_templates::generate_for_engagement),
             ),
     );
 }

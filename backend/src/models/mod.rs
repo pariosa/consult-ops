@@ -12,10 +12,10 @@ pub mod organization;
 pub mod organization_invitation;
 pub mod organization_member;
 pub mod party;
+pub mod party_payment_profile;
 pub mod payment;
 pub mod project;
 pub mod user;
-
 pub use client::Client;
 pub use contract::Contract;
 pub use engagement::Engagement;

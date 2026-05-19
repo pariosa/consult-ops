@@ -1,0 +1,130 @@
+use serde::{Deserialize, Serialize};
+use sqlx::{FromRow, Result as SqlxResult, SqlitePool};
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct PartyPaymentProfile {
+    pub id: i64,
+    pub party_id: i64,
+    pub organization_id: i64,
+    pub payment_role: String,
+
+    pub stripe_customer_id: Option<String>,
+    pub stripe_payment_method_id: Option<String>,
+    pub payer_authorization_status: String,
+    pub payer_authorized_at: Option<String>,
+    pub payer_authorization_scope: Option<String>,
+
+    pub stripe_connect_account_id: Option<String>,
+    pub stripe_connect_onboarding_status: String,
+    pub payout_status: String,
+    pub payout_verified_at: Option<String>,
+
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpsertPartyPaymentProfile {
+    pub payment_role: String,
+    pub payer_authorization_scope: Option<String>,
+}
+
+impl PartyPaymentProfile {
+    pub async fn find_by_party(db: &SqlitePool, party_id: i64) -> SqlxResult<Option<Self>> {
+        sqlx::query_as::<_, Self>(
+            r#"
+            SELECT *
+            FROM party_payment_profiles
+            WHERE party_id = ?
+            LIMIT 1
+            "#,
+        )
+        .bind(party_id)
+        .fetch_optional(db)
+        .await
+    }
+
+    pub async fn upsert_basic(
+        db: &SqlitePool,
+        party_id: i64,
+        organization_id: i64,
+        payment_role: &str,
+        payer_authorization_scope: Option<String>,
+    ) -> SqlxResult<Self> {
+        sqlx::query_as::<_, Self>(
+            r#"
+            INSERT INTO party_payment_profiles (
+                party_id,
+                organization_id,
+                payment_role,
+                payer_authorization_scope,
+                created_at,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
+            ON CONFLICT(party_id) DO UPDATE SET
+                payment_role = excluded.payment_role,
+                payer_authorization_scope = excluded.payer_authorization_scope,
+                updated_at = datetime('now')
+            RETURNING *
+            "#,
+        )
+        .bind(party_id)
+        .bind(organization_id)
+        .bind(payment_role)
+        .bind(payer_authorization_scope)
+        .fetch_one(db)
+        .await
+    }
+
+    pub async fn mark_payout_ready(
+        db: &SqlitePool,
+        party_id: i64,
+        stripe_connect_account_id: String,
+    ) -> SqlxResult<Self> {
+        sqlx::query_as::<_, Self>(
+            r#"
+            UPDATE party_payment_profiles
+            SET stripe_connect_account_id = ?,
+                stripe_connect_onboarding_status = 'complete',
+                payout_status = 'ready',
+                payout_verified_at = datetime('now'),
+                updated_at = datetime('now')
+            WHERE party_id = ?
+            RETURNING *
+            "#,
+        )
+        .bind(stripe_connect_account_id)
+        .bind(party_id)
+        .fetch_one(db)
+        .await
+    }
+
+    pub async fn mark_payer_authorized(
+        db: &SqlitePool,
+        party_id: i64,
+        stripe_customer_id: String,
+        stripe_payment_method_id: String,
+        scope: String,
+    ) -> SqlxResult<Self> {
+        sqlx::query_as::<_, Self>(
+            r#"
+            UPDATE party_payment_profiles
+            SET stripe_customer_id = ?,
+                stripe_payment_method_id = ?,
+                payer_authorization_status = 'authorized',
+                payer_authorized_at = datetime('now'),
+                payer_authorization_scope = ?,
+                updated_at = datetime('now')
+            WHERE party_id = ?
+            RETURNING *
+            "#,
+        )
+        .bind(stripe_customer_id)
+        .bind(stripe_payment_method_id)
+        .bind(scope)
+        .bind(party_id)
+        .fetch_one(db)
+        .await
+    }
+}
