@@ -6,6 +6,7 @@ pub struct Engagement {
     pub id: i64,
     pub organization_id: i64,
     pub project_id: i64,
+    pub engagement_type: String,
     pub contractor_name: String,
     pub contractor_email: String,
     pub role: String,
@@ -29,6 +30,7 @@ pub struct Engagement {
 pub struct CreateEngagement {
     pub organization_id: i64,
     pub project_id: i64,
+    pub engagement_type: String,
     pub contractor_name: String,
     pub contractor_email: String,
     pub role: String,
@@ -43,6 +45,7 @@ pub struct CreateEngagement {
 
 #[derive(Debug, Deserialize)]
 pub struct CreateEngagementRequest {
+    pub engagement_type: String,
     pub contractor_name: String,
     pub contractor_email: String,
     pub role: String,
@@ -64,6 +67,7 @@ impl Engagement {
             INSERT INTO engagements (
                 organization_id,
                 project_id,
+                engagement_type,
                 contractor_name,
                 contractor_email,
                 role,
@@ -78,12 +82,13 @@ impl Engagement {
                 platform_fee_status,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', 'pending', datetime('now'))
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', 'pending', datetime('now'))
             RETURNING *
             "#,
         )
         .bind(input.organization_id)
         .bind(input.project_id)
+        .bind(input.engagement_type)
         .bind(input.contractor_name)
         .bind(input.contractor_email)
         .bind(input.role)

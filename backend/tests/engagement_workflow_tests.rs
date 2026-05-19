@@ -51,6 +51,7 @@ async fn setup_db() -> Db {
         CREATE TABLE engagements (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             organization_id INTEGER NOT NULL,
+            engagement_type TEXT NOT NULL default 'software',
             project_id INTEGER NOT NULL,
             contractor_name TEXT NOT NULL,
             contractor_email TEXT NOT NULL,
@@ -211,6 +212,7 @@ async fn creates_software_engagement_for_project() {
     let payload = json!({
         "contractor_name": "Peter Dev",
         "contractor_email": "peter@example.com",
+        "engagement_type": "software",
         "role": "full_stack_developer",
         "title": "Build Client Portal MVP",
         "scope_of_work": "Build auth, project dashboard, milestones, and payment workflow.",
@@ -244,6 +246,7 @@ async fn lists_engagements_for_project() {
         INSERT INTO engagements (
             organization_id,
             project_id,
+            engagement_type,
             contractor_name,
             contractor_email,
             role,
@@ -257,6 +260,7 @@ async fn lists_engagements_for_project() {
         VALUES (
             1,
             1,
+            'software',
             'Contractor One',
             'contractor@example.com',
             'backend_developer',
@@ -299,6 +303,7 @@ async fn creates_and_lists_milestones() {
         INSERT INTO engagements (
             organization_id,
             project_id,
+            engagement_type,
             contractor_name,
             contractor_email,
             role,
@@ -312,6 +317,7 @@ async fn creates_and_lists_milestones() {
         VALUES (
             1,
             1,
+            'software',
             'Milestone Dev',
             'milestone@example.com',
             'frontend_developer',
@@ -438,6 +444,7 @@ async fn generates_software_contract_body() {
         INSERT INTO engagements (
             organization_id,
             project_id,
+            engagement_type,
             contractor_name,
             contractor_email,
             role,
@@ -453,6 +460,7 @@ async fn generates_software_contract_body() {
         VALUES (
             1,
             1,
+            'software',
             'Software Contractor',
             'dev@example.com',
             'full_stack_developer',

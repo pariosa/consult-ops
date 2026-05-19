@@ -155,6 +155,7 @@ CREATE TABLE IF NOT EXISTS engagements (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     organization_id INTEGER NOT NULL,
     project_id INTEGER NOT NULL,
+    engagement_type TEXT NOT NULL DEFAULT 'software',
     contractor_name TEXT NOT NULL,
     contractor_email TEXT NOT NULL,
     role TEXT NOT NULL,

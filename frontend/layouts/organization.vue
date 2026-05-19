@@ -34,12 +34,12 @@ const navItems = computed(() =>
     },
     {
       label: 'Projects',
-      to: '/projects',
+      to: './organization/projects',
       show: true,
     },
     {
       label: 'Clients',
-      to: '/clients',
+      to: '/organization/clients',
       show: true,
     },
 

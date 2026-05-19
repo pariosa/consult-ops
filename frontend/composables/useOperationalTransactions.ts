@@ -3,6 +3,10 @@ import { useApi } from './useApi';
 export function useOperationalTransactions() {
   const api = useApi();
 
+  async function getOrganizationTransactions(organizationId: number) {
+    return await api.get(`/api/organizations/${organizationId}/transactions`);
+  }
+
   async function getEngagementTransactions(engagementId: number) {
     return await api.get(`/api/engagements/${engagementId}/transactions`);
   }
@@ -30,6 +34,7 @@ export function useOperationalTransactions() {
   }
 
   return {
+    getOrganizationTransactions,
     getEngagementTransactions,
     markProcessing,
     markPaid,

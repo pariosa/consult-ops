@@ -1,6 +1,7 @@
 pub mod agreement_payout_rule;
 mod client;
 mod contract;
+pub mod contract_templates;
 pub mod engagement;
 pub mod engagement_billing;
 pub mod engagement_milestone;
@@ -16,7 +17,6 @@ pub mod party;
 mod payment;
 pub mod platform_admin;
 mod project;
-pub mod software_contract;
 mod stripe_engagement_handler;
 pub mod stripe_webhook;
 pub mod subscription;
@@ -44,6 +44,7 @@ pub use payment::{create_payment, get_payments};
 pub use project::{create_project, get_projects};
 pub use user::{create_user, get_user_by_id, get_users, update_user_type};
 
+pub use contract_templates::generate_for_engagement;
 pub use engagement::{
     activate_engagement, cancel_engagement, complete_engagement, create_for_project,
     dispute_engagement, list_for_project, mark_contract_sent, mark_signed, show,
@@ -53,7 +54,6 @@ pub use engagement_milestone::{
     mark_engagement_milestone_paid, reopen_engagement_milestone, submit_engagement_milestone,
     update_engagement_milestone,
 };
-pub use software_contract::generate_for_engagement;
 pub use stripe_webhook::stripe_webhook;
 // src/handlers/mod.rs
 

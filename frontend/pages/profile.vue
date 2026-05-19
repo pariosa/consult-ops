@@ -1,22 +1,16 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import DashboardShell from '~/components/DashboardShell.vue';
-
-definePageMeta({
-  middleware: ['role'],
-  allowedUserTypes: ['admin', 'consultant', 'client'],
-});
-
-const user = ref<any | null>(null);
-
-onMounted(() => {
-  const raw = localStorage.getItem('auth_user');
-  user.value = raw ? JSON.parse(raw) : null;
-});
-
+import { computed } from 'vue';
 import { useAuth } from '~/composables/useAuth';
 
 const { authUser } = useAuth();
+
+const displayName = computed(
+  () => authUser.value?.name || authUser.value?.email || 'Current User',
+);
+const displayEmail = computed(() => authUser.value?.email || '—');
+const displayRole = computed(
+  () => authUser.value?.user_type || authUser.value?.role || 'member',
+);
 </script>
 
 <template>
@@ -26,37 +20,28 @@ const { authUser } = useAuth();
   >
     <section class="portal-section">
       <p class="eyebrow">Account</p>
-      <h2>{{ authUser?.name || authUser?.email }}</h2>
-      <p>{{ authUser?.email }}</p>
-      <p>{{ authUser?.user_type || authUser?.role }}</p>
+      <h2>{{ displayName }}</h2>
+
+      <div class="profile-grid">
+        <div>
+          <span>Email: </span>
+          <strong>{{ displayEmail }}</strong>
+        </div>
+
+        <div>
+          <span>Role: </span>
+          <strong>{{ displayRole }}</strong>
+        </div>
+      </div>
     </section>
   </DashboardShell>
 </template>
-<style scoped>
-.panel {
-  padding: 1.5rem;
-  border: 1px solid rgba(80, 210, 170, 0.25);
-  border-radius: 1.25rem;
-  background: rgba(8, 19, 31, 0.82);
-}
 
-.eyebrow {
-  color: #55d6be;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
+<style>
+.profile-grid {
+  color: antiquewhite;
 }
-
-dl {
-  display: grid;
-  gap: 1rem;
-}
-
-dt {
-  color: #9fb3c8;
-}
-
-dd {
-  margin: 0.25rem 0 0;
-  color: white;
+.portal-section > h2 {
+  color: antiquewhite;
 }
 </style>

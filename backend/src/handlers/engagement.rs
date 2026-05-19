@@ -52,6 +52,7 @@ pub async fn create_for_project(
     let engagement = CreateEngagement {
         organization_id,
         project_id,
+        engagement_type: input.engagement_type,
         contractor_name: input.contractor_name,
         contractor_email: input.contractor_email,
         role: input.role,
