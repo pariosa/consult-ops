@@ -1,6 +1,6 @@
 use actix_web::{HttpResponse, Responder, web};
 
-use crate::auth::permissions::{can_manage_agreements, require_permission};
+use crate::auth::permissions::can_manage_agreements;
 use crate::auth_context::AuthUser;
 use crate::db::Db;
 use crate::models::agreement_payout_rule::{AgreementPayoutRule, CreateAgreementPayoutRule};
@@ -215,5 +215,29 @@ pub async fn create_agreement_payout_rule(
             eprintln!("create_agreement_payout_rule error: {:?}", err);
             HttpResponse::InternalServerError().body(err.to_string())
         }
+    }
+}
+
+pub async fn lock_agreement(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
+    let agreement_id = path.into_inner();
+
+    let rule_count: (i64,) =
+        match sqlx::query_as("SELECT COUNT(*) FROM agreement_payout_rules WHERE agreement_id = ?")
+            .bind(agreement_id)
+            .fetch_one(db.pool.as_ref())
+            .await
+        {
+            Ok(count) => count,
+            Err(err) => return HttpResponse::InternalServerError().body(err.to_string()),
+        };
+
+    if rule_count.0 == 0 {
+        return HttpResponse::Conflict()
+            .body("Agreement must have at least one payout rule before locking.");
+    }
+
+    match OperationalAgreement::lock(db.pool.as_ref(), agreement_id).await {
+        Ok(agreement) => HttpResponse::Ok().json(agreement),
+        Err(err) => HttpResponse::InternalServerError().body(err.to_string()),
     }
 }

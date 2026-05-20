@@ -6,7 +6,7 @@ test('agreement rule creates transaction after milestone approval and notificati
   let payoutRules: any[] = [];
   let milestones: any[] = [];
   let transactions: any[] = [];
-
+  let notifications: any[] = [];
   await page.addInitScript(() => {
     window.localStorage.setItem(
       'auth:user',
@@ -174,7 +174,83 @@ test('agreement rule creates transaction after milestone approval and notificati
       json: transactions,
     });
   });
+  await page.route('**/api/notifications', async (route) => {
+    await route.fulfill({
+      json: notifications,
+    });
+  });
+  await page.route('**/api/transactions/*/mark-paid', async (route) => {
+    const transactionId = Number(
+      route
+        .request()
+        .url()
+        .match(/transactions\/(\d+)/)?.[1],
+    );
 
+    transactions = transactions.map((transaction) =>
+      transaction.id === transactionId
+        ? {
+            ...transaction,
+            status: 'paid',
+          }
+        : transaction,
+    );
+
+    notifications = [
+      {
+        id: 1,
+        title: 'Transaction marked paid',
+        body: 'A payout transaction was marked paid for Agreement Transaction Workflow.',
+        notification_type: 'transaction_paid',
+        read_at: null,
+        created_at: '2026-05-20 00:00:00',
+      },
+    ];
+
+    await route.fulfill({
+      json: transactions.find(
+        (transaction) => transaction.id === transactionId,
+      ),
+    });
+  });
+
+  await page.route(
+    '**/api/operational-transactions/*/mark-paid',
+    async (route) => {
+      const transactionId = Number(
+        route
+          .request()
+          .url()
+          .match(/operational-transactions\/(\d+)/)?.[1],
+      );
+
+      transactions = transactions.map((transaction) =>
+        transaction.id === transactionId
+          ? {
+              ...transaction,
+              status: 'paid',
+            }
+          : transaction,
+      );
+
+      notifications = [
+        {
+          id: 1,
+          title: 'Transaction marked paid',
+          body: 'A payout transaction was marked paid for Agreement Transaction Workflow.',
+          notification_type: 'transaction_paid',
+          read_at: null,
+          created_at: '2026-05-20 00:00:00',
+        },
+      ];
+
+      await route.fulfill({
+        json: transactions.find(
+          (transaction) => transaction.id === transactionId,
+        ),
+      });
+    },
+  );
   await page.goto('/engagements/1/agreements');
 
   await expect(page.getByText('Agreement Rules')).toBeVisible();
@@ -254,4 +330,21 @@ test('agreement rule creates transaction after milestone approval and notificati
   await expect(page.getByText(/\$25\.00|\$25/i).first()).toBeVisible();
 
   await expect(page.getByText(/MilestoneApproved/i).first()).toBeVisible();
+  const paidButton = page
+    .getByRole('button', { name: /paid|mark as paid|mark paid/i })
+    .first();
+
+  await expect(paidButton).toBeVisible();
+  await paidButton.click();
+
+  await expect(page.getByText(/paid/i).first()).toBeVisible();
+
+  await page.goto('/notifications');
+
+  await expect(
+    page.getByRole('heading', { name: /notifications/i }),
+  ).toBeVisible();
+
+  await expect(page.getByText(/transaction marked paid/i)).toBeVisible();
+  await expect(page.getByText(/transaction_paid/i)).toBeVisible();
 });

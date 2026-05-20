@@ -7,9 +7,9 @@ use crate::handlers::{
     create_engagement_milestone, create_for_project, create_invoice, create_organization_agreement,
     create_organization_client, create_organization_member, create_organization_party,
     create_organization_project, create_party_from_client, create_party_from_user, create_payment,
-    create_platform_organization, create_platform_user, create_project, create_user,
-    delete_organization_member, dispute_engagement, generate_for_engagement, get_admin_summary,
-    get_client_portal_summary, get_clients, get_contracts, get_invoices, get_me,
+    create_payout_rule, create_platform_organization, create_platform_user, create_project,
+    create_user, delete_organization_member, dispute_engagement, generate_for_engagement,
+    get_admin_summary, get_client_portal_summary, get_clients, get_contracts, get_invoices, get_me,
     get_my_organization, get_organization, get_organization_clients, get_organization_contracts,
     get_organization_finance_summary, get_organization_invoices, get_organization_members,
     get_organization_party_balances, get_organization_payments, get_organization_projects,
@@ -19,13 +19,14 @@ use crate::handlers::{
     list_engagement_transactions, list_for_project, list_my_notifications,
     list_organization_agreements, list_organization_events, list_organization_invitations,
     list_organization_members, list_organization_parties, list_organization_transactions,
-    list_platform_organization_members, list_platform_organizations, list_platform_users,
-    mark_all_notifications_read, mark_billing_paid, mark_contract_sent,
-    mark_engagement_milestone_paid, mark_notification_read, mark_party_payer_authorized_dev,
-    mark_party_payout_ready_dev, mark_signed, mark_transaction_failed, mark_transaction_paid,
-    mark_transaction_processing, reopen_engagement_milestone, show, stripe_webhook,
-    submit_engagement_milestone, update_engagement_milestone, update_organization,
-    update_organization_member, update_user_type, upsert_party_payment_profile, verify_party,
+    list_payout_rules, list_platform_organization_members, list_platform_organizations,
+    list_platform_users, lock_agreement, mark_all_notifications_read, mark_billing_paid,
+    mark_contract_sent, mark_engagement_milestone_paid, mark_notification_read,
+    mark_party_payer_authorized_dev, mark_party_payout_ready_dev, mark_signed,
+    mark_transaction_failed, mark_transaction_paid, mark_transaction_processing,
+    reopen_engagement_milestone, show, stripe_webhook, submit_engagement_milestone,
+    update_engagement_milestone, update_organization, update_organization_member, update_user_type,
+    upsert_party_payment_profile, verify_party,
 };
 use actix_web::web;
 pub fn config(cfg: &mut web::ServiceConfig) {
@@ -336,6 +337,15 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route(
                 "/parties/{id}/payer-authorized/dev",
                 web::post().to(mark_party_payer_authorized_dev),
+            )
+            .route("/agreements/{id}/lock", web::post().to(lock_agreement))
+            .route(
+                "/agreements/{id}/payout-rules",
+                web::post().to(create_payout_rule),
+            )
+            .route(
+                "/agreements/{id}/payout-rules",
+                web::get().to(list_payout_rules),
             ),
     );
 }

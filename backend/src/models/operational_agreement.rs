@@ -78,4 +78,26 @@ impl OperationalAgreement {
         .fetch_optional(db)
         .await
     }
+    pub async fn lock(db: &SqlitePool, id: i64) -> SqlxResult<Self> {
+        sqlx::query_as::<_, OperationalAgreement>(
+            r#"
+        UPDATE operational_agreements
+        SET status = 'locked'
+        WHERE id = ?
+        RETURNING *
+        "#,
+        )
+        .bind(id)
+        .fetch_one(db)
+        .await
+    }
+
+    pub async fn find(db: &SqlitePool, id: i64) -> SqlxResult<Self> {
+        sqlx::query_as::<_, OperationalAgreement>(
+            "SELECT * FROM operational_agreements WHERE id = ?",
+        )
+        .bind(id)
+        .fetch_one(db)
+        .await
+    }
 }
