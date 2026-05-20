@@ -1,7 +1,9 @@
+<!-- frontend/pages/engagements/[id]/agreements.vue -->
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useApi } from '~/composables/useApi';
 import { usePermissions } from '~/composables/usePermissions';
+import AgreementPaymentSetup from '~/components/Agreements/AgreementPaymentSetup.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -36,6 +38,27 @@ const verifiedContractorParties = computed(() =>
     ['contractor', 'subcontractor'].includes(party.party_type),
   ),
 );
+const paymentReadiness = ref({
+  payerReady: false,
+  payeeReady: false,
+  allReady: false,
+});
+
+function updatePaymentReadiness(payload) {
+  paymentReadiness.value = payload;
+
+  if (payload.payerReady && setupPayerPartyId.value) {
+    payoutRuleForm.value.from_party_id = setupPayerPartyId.value;
+  }
+
+  if (payload.payeeReady && setupPayeePartyId.value) {
+    payoutRuleForm.value.to_party_id = setupPayeePartyId.value;
+  }
+}
+
+const setupPayerPartyId = ref<number | null>(null);
+const setupPayeePartyId = ref<number | null>(null);
+
 async function createVerifiedClientParty() {
   if (!organizationId.value || !engagement.value?.client_id) {
     error.value = 'No client is linked to this engagement project.';
@@ -69,7 +92,7 @@ async function createVerifiedUserParty() {
 
   try {
     await api.post(
-      `/api/organizations/${organizationId.value}/parties/from-user/${engagement.value?.contractor_user_id || 1}`,
+      `/api/organizations/${organizationId.value}/parties/from-user/${engagement.value?.contractor_user_id}`,
       {},
     );
     await refresh();
@@ -82,6 +105,7 @@ async function createVerifiedUserParty() {
     saving.value = false;
   }
 }
+
 const clientParty = ref({
   name: '',
   email: '',
@@ -93,7 +117,15 @@ const contractorParty = ref({
   email: '',
   party_type: 'contractor',
 });
+const clientPayerParties = computed(() =>
+  parties.value.filter((party) => party.party_type === 'client'),
+);
 
+const contractorPayeeParties = computed(() =>
+  parties.value.filter((party) =>
+    ['contractor', 'subcontractor'].includes(party.party_type),
+  ),
+);
 const agreementForm = ref({
   title: 'Client pays contractor on milestone approval',
   agreement_type: 'milestone_payout',
@@ -108,22 +140,28 @@ const payoutRuleForm = ref({
   trigger_event: 'MilestoneApproved',
 });
 
-const clientParties = computed(() =>
-  parties.value.filter((party) => party.party_type === 'client'),
-);
-
-const contractorParties = computed(() =>
-  parties.value.filter((party) =>
-    ['contractor', 'subcontractor'].includes(party.party_type),
-  ),
-);
-
 const selectedAgreement = computed(() =>
   agreements.value.find(
     (agreement) => agreement.id === selectedAgreementId.value,
   ),
 );
+function preparePayer(partyId: number) {
+  setupPayerPartyId.value = Number(partyId);
+  paymentReadiness.value = {
+    ...paymentReadiness.value,
+    payerReady: false,
+    allReady: false,
+  };
+}
 
+function preparePayee(partyId: number) {
+  setupPayeePartyId.value = Number(partyId);
+  paymentReadiness.value = {
+    ...paymentReadiness.value,
+    payeeReady: false,
+    allReady: false,
+  };
+}
 function formatPercent(rule: any) {
   if (rule.percent) return `${rule.percent}%`;
   if (rule.amount_cents) return `$${(rule.amount_cents / 100).toFixed(2)}`;
@@ -284,6 +322,10 @@ function partyLabel(partyId: number) {
 
   return `${party.name} — ${verified} ${party.party_type}`;
 }
+let { authUser } = useAuth();
+
+console.log('auth user', authUser.value);
+console.log('can manage agreements', canManageAgreements.value);
 
 onMounted(refresh);
 </script>
@@ -314,48 +356,142 @@ onMounted(refresh);
           View Transaction Ledger
         </button>
       </section>
-      <section v-if="canManageAgreements" class="setup-grid">
-        <section class="setup-grid">
-          <div class="portal-section">
-            <p class="eyebrow">Client Party</p>
-            <h2>Create Client</h2>
+      <AgreementPaymentSetup
+        :parties="parties"
+        v-if="canManageAgreements"
+        :trigger-event="payoutRuleForm.trigger_event"
+        :percent="Number(payoutRuleForm.percent || 0)"
+        :payer-party-id="setupPayerPartyId"
+        :payee-party-id="setupPayeePartyId"
+        @refresh="refresh"
+        @readiness-change="updatePaymentReadiness"
+        :amount-cents="
+          payoutRuleForm.amount_cents
+            ? Number(payoutRuleForm.amount_cents)
+            : null
+        "
+      />
+      <section v-if="canManageAgreements" class="portal-section">
+        <p class="eyebrow">Current Setup Selection</p>
 
-            <label>Name</label>
-            <input v-model="clientParty.name" class="form-input" />
+        <p>
+          Payer being prepared:
+          <strong>
+            {{
+              setupPayerPartyId
+                ? partyLabel(setupPayerPartyId)
+                : 'None selected'
+            }}
+          </strong>
+        </p>
 
-            <label>Email</label>
-            <input v-model="clientParty.email" class="form-input" />
-
-            <button
-              class="form-button"
-              :disabled="saving || !clientParty.name"
-              @click="createClientParty"
-            >
-              Add Client Party
-            </button>
-          </div>
-
-          <div class="portal-section">
-            <p class="eyebrow">Contractor Party</p>
-            <h2>Create Contractor</h2>
-
-            <label>Name</label>
-            <input v-model="contractorParty.name" class="form-input" />
-
-            <label>Email</label>
-            <input v-model="contractorParty.email" class="form-input" />
-
-            <button
-              class="form-button"
-              :disabled="saving || !contractorParty.name"
-              @click="createContractorParty"
-            >
-              Add Contractor Party
-            </button>
-          </div>
-        </section>
+        <p>
+          Payee being prepared:
+          <strong>
+            {{
+              setupPayeePartyId
+                ? partyLabel(setupPayeePartyId)
+                : 'None selected'
+            }}
+          </strong>
+        </p>
       </section>
-      <div v-else-if="canManageAgreements" class="form-grid">
+      <section v-if="canManageAgreements" class="setup-grid">
+        <div class="portal-section">
+          <p class="eyebrow">Client Party</p>
+          <h2>Create Client</h2>
+
+          <label>Name</label>
+          <input v-model="clientParty.name" class="form-input" />
+
+          <label>Email</label>
+          <input v-model="clientParty.email" class="form-input" />
+
+          <button
+            class="form-button"
+            :disabled="saving || !clientParty.name"
+            @click="createClientParty"
+          >
+            Add Client Party
+          </button>
+        </div>
+
+        <div class="portal-section">
+          <p class="eyebrow">Contractor Party</p>
+          <h2>Create Contractor</h2>
+
+          <label>Name</label>
+          <input v-model="contractorParty.name" class="form-input" />
+
+          <label>Email</label>
+          <input v-model="contractorParty.email" class="form-input" />
+
+          <button
+            class="form-button"
+            :disabled="saving || !contractorParty.name"
+            @click="createContractorParty"
+          >
+            Add Contractor Party
+          </button>
+        </div>
+      </section>
+      <section v-if="!canManageAgreements" class="form-error">
+        You can view this engagement, but only admins, operations managers,
+        finance admins, or payment moderators can manage agreement rules.
+      </section>
+      <p>
+        Registry parties can be selected for verification and payment setup.
+        Only verified, payment-ready parties can be used in active payout rules.
+      </p>
+      <section class="portal-section">
+        <p class="eyebrow">Party Registry</p>
+        <h2>Available Payers and Payees</h2>
+
+        <div class="setup-grid">
+          <div>
+            <h3>Client / Payer Parties</h3>
+
+            <div
+              v-for="party in clientPayerParties"
+              :key="party.id"
+              class="ops-card"
+            >
+              <strong>{{ party.name }}</strong>
+              <p>{{ party.email }}</p>
+              <p>{{ partyLabel(party.id) }}</p>
+
+              <button
+                class="form-button secondary"
+                @click="preparePayer(party.id)"
+              >
+                Prepare as Payer
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <h3>Contractor / Payee Parties</h3>
+
+            <div
+              v-for="party in contractorPayeeParties"
+              :key="party.id"
+              class="ops-card"
+            >
+              <strong>{{ party.name }}</strong>
+              <p>{{ party.email }}</p>
+              <p>{{ partyLabel(party.id) }}</p>
+
+              <button
+                class="form-button secondary"
+                @click="preparePayee(party.id)"
+              >
+                Prepare as Payee
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+      <div class="form-grid">
         <section class="portal-section">
           <div class="section-header">
             <div>
@@ -462,11 +598,12 @@ onMounted(refresh);
             <option value="MilestoneApproved">Milestone Approved</option>
             <option value="EngagementCompleted">Engagement Completed</option>
           </select>
-
           <button
             v-if="canManageAgreements"
             class="form-button"
-            :disabled="saving || !selectedAgreementId"
+            :disabled="
+              saving || !selectedAgreementId || !paymentReadiness.allReady
+            "
             @click="createPayoutRule"
           >
             Add Payout Rule
@@ -474,6 +611,13 @@ onMounted(refresh);
           <div v-if="!canManageAgreements" class="form-error">
             You can view agreement rules, but you do not have permission to
             modify them.
+          </div>
+          <div
+            v-if="canManageAgreements && !paymentReadiness.allReady"
+            class="form-error"
+          >
+            Payment setup is incomplete. Verify payer funding and payee payout
+            readiness before adding this payout rule.
           </div>
         </div>
       </section>
@@ -492,6 +636,7 @@ onMounted(refresh);
 
           <button
             class="form-button secondary"
+            :disabled="!engagement?.contractor_user_id"
             @click="createVerifiedUserParty"
           >
             Create Verified Contractor Party

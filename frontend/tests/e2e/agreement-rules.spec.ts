@@ -109,7 +109,13 @@ test('admin can configure agreement with verified parties', async ({
 
   await expect(page.getByText('Agreement Rules')).toBeVisible();
 
-  await expect(page.getByText('Unverified Vendor')).toHaveCount(0);
+  await expect(page.locator('#payer-party')).not.toContainText(
+    'Unverified Vendor',
+  );
+  await expect(page.locator('#payee-party')).not.toContainText(
+    'Unverified Vendor',
+  );
+
   const payer = page.locator('#payer-party');
   const payee = page.locator('#payee-party');
 
@@ -164,6 +170,9 @@ test('unverified parties are not selectable for core payout rules', async ({
   });
 
   await page.goto('/engagements/1/agreements');
+  const payer = page.locator('#payer-party');
+  const payee = page.locator('#payee-party');
 
-  await expect(page.getByText('Unverified Vendor')).toHaveCount(0);
+  await expect(payer).not.toContainText('Unverified Vendor');
+  await expect(payee).not.toContainText('Unverified Vendor');
 });

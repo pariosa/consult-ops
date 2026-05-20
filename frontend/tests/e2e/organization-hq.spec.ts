@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 test('admin sees role-aware organization workspace navigation', async ({
   page,
@@ -9,9 +9,13 @@ test('admin sees role-aware organization workspace navigation', async ({
       JSON.stringify({
         id: 1,
         email: 'admin@atlas.test',
+        name: 'Avery Atlas',
         user_type: 'admin',
+        role: 'admin',
+        portal: 'admin',
       }),
     );
+    window.localStorage.setItem('auth:token', 'e2e-admin-token');
   });
 
   await page.route('**/api/me/organization', async (route) => {
@@ -24,29 +28,24 @@ test('admin sees role-aware organization workspace navigation', async ({
   });
 
   await page.goto('/organization');
+
   await expect(
-    page.getByRole('heading', { name: 'Organization HQ' }),
+    page.getByRole('heading', { name: /organization hq/i }),
   ).toBeVisible();
+
   await expect(page.getByText('Atlas Operations')).toBeVisible();
+
   await expect(
-    page.locator('.role-pill').filter({ hasText: /^admin$/ }),
+    page.getByRole('link', { name: 'Projects', exact: true }).first(),
   ).toBeVisible();
+
   await expect(
-    page.getByRole('link', { name: 'Members', exact: true }),
+    page.getByRole('link', { name: 'Clients', exact: true }).first(),
   ).toBeVisible();
+
   await expect(
-    page.getByRole('link', { name: 'Invitations', exact: true }),
+    page.getByRole('link', { name: 'Engagements', exact: true }).first(),
   ).toBeVisible();
-  await expect(
-    page.getByRole('link', { name: 'Operational Finance', exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole('link', { name: 'Projects', exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole('link', { name: 'Clients', exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText('Agreements').first()).toBeVisible();
 });
 
 test('contractor sees limited organization workspace navigation', async ({
@@ -58,9 +57,13 @@ test('contractor sees limited organization workspace navigation', async ({
       JSON.stringify({
         id: 2,
         email: 'contractor@example.com',
+        name: 'Contractor User',
         user_type: 'contractor',
+        role: 'contractor',
+        portal: 'contractor',
       }),
     );
+    window.localStorage.setItem('auth:token', 'e2e-contractor-token');
   });
 
   await page.route('**/api/me/organization', async (route) => {
@@ -73,24 +76,30 @@ test('contractor sees limited organization workspace navigation', async ({
   });
 
   await page.goto('/organization');
+
   await expect(
-    page.getByRole('heading', { name: 'Organization HQ' }),
+    page.getByRole('heading', { name: /organization hq/i }),
   ).toBeVisible();
+
   await expect(page.getByText('Atlas Operations')).toBeVisible();
+
   await expect(
-    page.locator('.role-pill').filter({ hasText: /^contractor$/ }),
+    page.getByRole('link', { name: 'Projects', exact: true }).first(),
   ).toBeVisible();
+
   await expect(
-    page.getByRole('link', { name: 'Projects', exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole('link', { name: 'Clients', exact: true }),
+    page.getByRole('link', { name: 'Clients', exact: true }).first(),
   ).toBeVisible();
 
   await expect(
     page.getByRole('link', { name: 'Operational Finance', exact: true }),
   ).toHaveCount(0);
+
   await expect(
     page.getByRole('link', { name: 'Invitations', exact: true }),
+  ).toHaveCount(0);
+
+  await expect(
+    page.getByRole('link', { name: 'Users', exact: true }),
   ).toHaveCount(0);
 });

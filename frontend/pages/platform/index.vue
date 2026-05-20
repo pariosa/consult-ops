@@ -10,9 +10,29 @@ const {
   getOrganizationMembers,
   assignUserToOrganization,
 } = usePlatformAdmin();
+import { useAuth } from '~/composables/useAuth';
+import role from '~/middleware/role';
 
-const { role } = usePermissions();
+const { authUser } = useAuth();
 
+const isSuperAdmin = computed(() => {
+  if (!process.client) return false;
+
+  const raw = localStorage.getItem('auth:user');
+  const localUser = raw ? JSON.parse(raw) : null;
+
+  return (
+    role.value === 'super_admin' ||
+    role.value === 'platform' ||
+    localUser?.user_type === 'super_admin' ||
+    localUser?.role === 'super_admin' ||
+    localUser?.portal === 'platform'
+  );
+});
+
+onMounted(() => {
+  console.log('PLATFORM authUser', authUser.value);
+});
 const loading = ref(true);
 const saving = ref(false);
 const error = ref('');
@@ -38,8 +58,6 @@ const assignmentForm = ref({
   user_id: null as number | null,
   role: 'admin',
 });
-
-const isSuperAdmin = computed(() => role.value === 'super_admin');
 
 async function refresh() {
   loading.value = true;

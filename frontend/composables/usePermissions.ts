@@ -1,32 +1,52 @@
-import { computed, onMounted } from 'vue';
+import { computed } from 'vue';
+import { useAuth } from '~/composables/useAuth';
+
+const agreementManagerRoles = [
+  'super_admin',
+  'owner',
+  'admin',
+  'finance_admin',
+  'operations_manager',
+  'payment_moderator',
+];
+
+function localAuthUser() {
+  if (!process.client) return null;
+
+  try {
+    return JSON.parse(localStorage.getItem('auth:user') || 'null');
+  } catch {
+    return null;
+  }
+}
 
 export function usePermissions() {
-  const user = useState<any>('auth:user', () => null);
+  const { authUser } = useAuth();
 
-  onMounted(() => {
-    if (!user.value) {
-      try {
-        user.value = JSON.parse(localStorage.getItem('auth:user') || 'null');
-      } catch {
-        user.value = null;
-      }
-    }
+  const user = computed(() => authUser.value || localAuthUser());
+
+  const role = computed(() => {
+    return (
+      user.value?.user_type || user.value?.role || user.value?.portal || ''
+    );
   });
 
-  const role = computed(() => user.value?.user_type || user.value?.role || '');
-
   const canManageFinance = computed(() =>
-    ['owner', 'admin', 'finance_admin'].includes(role.value),
+    ['owner', 'admin', 'finance_admin', 'super_admin'].includes(role.value),
   );
 
   const canManageAgreements = computed(() =>
-    ['owner', 'admin', 'finance_admin'].includes(role.value),
+    agreementManagerRoles.includes(role.value),
   );
 
   const canProcessTransactions = computed(() =>
-    ['owner', 'admin', 'finance_admin', 'operations_manager'].includes(
-      role.value,
-    ),
+    [
+      'owner',
+      'admin',
+      'finance_admin',
+      'operations_manager',
+      'super_admin',
+    ].includes(role.value),
   );
 
   return {

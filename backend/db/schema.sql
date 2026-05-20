@@ -299,24 +299,30 @@ CREATE TABLE IF NOT EXISTS notification_jobs (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE party_payment_profiles (
+CREATE TABLE IF NOT EXISTS party_payment_profiles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    party_id INTEGER NOT NULL,
+
+    party_id INTEGER NOT NULL UNIQUE,
     organization_id INTEGER NOT NULL,
 
     payment_role TEXT NOT NULL, -- payer, payee, both
 
     stripe_customer_id TEXT,
     stripe_payment_method_id TEXT,
+
     payer_authorization_status TEXT NOT NULL DEFAULT 'not_configured',
     payer_authorized_at TEXT,
     payer_authorization_scope TEXT, -- single_milestone, engagement, agreement
 
     stripe_connect_account_id TEXT,
     stripe_connect_onboarding_status TEXT NOT NULL DEFAULT 'not_started',
+
     payout_status TEXT NOT NULL DEFAULT 'not_ready',
     payout_verified_at TEXT,
 
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY(party_id) REFERENCES parties(id),
+    FOREIGN KEY(organization_id) REFERENCES organizations(id)
 );
