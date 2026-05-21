@@ -1,7 +1,12 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import SoftwareEngagementForm from '../components/EngagementForms/SoftwareEngagementForm.vue';
+import { vi } from 'vitest';
+import { nextTick } from 'vue';
 
+vi.stubGlobal('useRouter', () => ({
+  push: vi.fn(),
+}));
 describe('SoftwareEngagementForm', () => {
   it('renders software engagement fields', () => {
     const wrapper = mount(SoftwareEngagementForm, {
@@ -21,22 +26,25 @@ describe('SoftwareEngagementForm', () => {
     expect(wrapper.text()).toContain('Repo URL');
   });
 
-  it('emits created event on mock submit', async () => {
+  it('emits submit event on form submit', async () => {
     const wrapper = mount(SoftwareEngagementForm, {
       props: {
-        projectId: 1,
-        organizationId: 1,
-        mockSubmit: true,
+        projects: [
+          {
+            id: 1,
+            name: 'Client Portal MVP',
+          },
+        ],
       },
     });
 
-    await wrapper.find('input').setValue('Peter Dev');
-
     const inputs = wrapper.findAll('input');
+    const textareas = wrapper.findAll('textarea');
+
+    await inputs[0].setValue('Peter Dev');
     await inputs[1].setValue('peter@example.com');
     await inputs[2].setValue('Build Client Portal MVP');
 
-    const textareas = wrapper.findAll('textarea');
     await textareas[0].setValue(
       'Build auth, dashboard, milestones, and billing.',
     );
@@ -46,16 +54,21 @@ describe('SoftwareEngagementForm', () => {
     await inputs[4].setValue('200000');
 
     await wrapper.find('form').trigger('submit.prevent');
+    await nextTick();
 
-    const emitted = wrapper.emitted('created');
-
+    const emitted = wrapper.emitted('submit');
     expect(emitted).toBeTruthy();
+
     expect(emitted?.[0][0]).toMatchObject({
+      project_id: 1,
       contractor_name: 'Peter Dev',
       contractor_email: 'peter@example.com',
       title: 'Build Client Portal MVP',
-      status: 'draft',
-      platform_fee_status: 'pending',
+      scope_of_work: 'Build auth, dashboard, milestones, and billing.',
+      deliverables: 'Rust API, Nuxt frontend, deployment.',
+      repo_url: 'https://github.com/example/repo',
+      amount_cents: 200000,
+      currency: 'usd',
     });
   });
 });

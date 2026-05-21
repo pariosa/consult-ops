@@ -32,6 +32,7 @@ describe('LoginForm', () => {
         email: 'client@example.com',
         password: 'StrongPass123!',
         userType: 'client',
+        remember_me: false,
       },
     ]);
   });

@@ -393,20 +393,20 @@ async fn create_user_and_membership(
 
         let rec = sqlx::query(
             r#"
-            INSERT INTO users
-            (email, password_hash, name, user_type, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            "#,
+    INSERT INTO users
+    (email, password_hash, name, user_type, email_verified_at, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    "#,
         )
         .bind(email)
         .bind(password_hash)
         .bind(name)
         .bind(user_type)
-        .bind(&now)
-        .bind(&now)
+        .bind(&now) // email_verified_at
+        .bind(&now) // created_at
+        .bind(&now) // updated_at
         .execute(&*db.pool)
         .await?;
-
         rec.last_insert_rowid()
     };
 
@@ -557,17 +557,18 @@ async fn create_platform_user(
 
     let rec = sqlx::query(
         r#"
-        INSERT INTO users
-        (email, password_hash, name, user_type, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-        "#,
+    INSERT INTO users
+    (email, password_hash, name, user_type, email_verified_at, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    "#,
     )
     .bind(email)
     .bind(password_hash)
     .bind(name)
     .bind(user_type)
-    .bind(&now)
-    .bind(&now)
+    .bind(&now) // email_verified_at
+    .bind(&now) // created_at
+    .bind(&now) // updated_at
     .execute(&*db.pool)
     .await?;
 

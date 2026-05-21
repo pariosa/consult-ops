@@ -1,4 +1,7 @@
-use crate::auth::{forgot_password, login, register, reset_password};
+use crate::auth::{
+    auth_me, forgot_password, list_auth_sessions, login, logout, register, resend_verification,
+    reset_password, revoke_auth_session, verify_email,
+};
 use crate::handlers::{
     accept_organization_invitation, activate_engagement, approve_engagement_milestone,
     assign_platform_user_to_organization, attach_checkout_session, cancel_engagement,
@@ -37,6 +40,15 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("/auth/login", web::post().to(login))
             .route("/auth/forgot-password", web::post().to(forgot_password))
             .route("/auth/reset-password", web::post().to(reset_password))
+            .route("/auth/logout", web::post().to(logout))
+            .route("/auth/verify-email", web::post().to(verify_email))
+            .route("/auth/me", web::get().to(auth_me))
+            .route(
+                "/auth/resend-verification",
+                web::post().to(resend_verification),
+            )
+            .route("/auth/sessions", web::get().to(list_auth_sessions))
+            .route("/auth/sessions/{id}", web::delete().to(revoke_auth_session))
             // Logged-in context
             .route("/me", web::get().to(get_me))
             .route("/me/organization", web::get().to(get_my_organization))

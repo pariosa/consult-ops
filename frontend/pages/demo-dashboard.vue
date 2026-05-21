@@ -26,21 +26,17 @@ import { ref, onMounted } from 'vue';
 import ProjectCard from '~/components/Project/ProjectCard.vue';
 import InvoiceCard from '~/components/Invoices/InvoiceCard.vue';
 import ContractCard from '~/components/Contracts/ContractCard.vue';
+import { useApi } from '~/composables/useApi';
 
 const projects = ref([]);
 const invoices = ref([]);
 const contracts = ref([]);
-
+const config = useRuntimeConfig();
+const { apiFetch } = useApi();
 onMounted(async () => {
-  projects.value = await (
-    await fetch('http://localhost:8000/api/projects')
-  ).json();
-  invoices.value = await (
-    await fetch('http://localhost:8000/api/invoices')
-  ).json();
-  contracts.value = await (
-    await fetch('http://localhost:8000/api/contracts')
-  ).json();
+  projects.value = await apiFetch(`${config.public.apiBase}/api/projects`);
+  invoices.value = await apiFetch(`${config.public.apiBase}/api/invoices`);
+  contracts.value = await apiFetch(`${config.public.apiBase}/api/contracts`);
 });
 </script>
 

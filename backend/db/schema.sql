@@ -1,6 +1,6 @@
 PRAGMA foreign_keys = ON;
 
--- users table
+-- users table -- and Authehtication scaffold
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT UNIQUE NOT NULL,
@@ -8,9 +8,68 @@ CREATE TABLE IF NOT EXISTS users (
     name TEXT,
     user_type TEXT NOT NULL DEFAULT 'consultant',
     created_at TEXT,
-    updated_at TEXT
+    updated_at TEXT,
+    email_verified_at TEXT,
+    disabled_at TEXT,
+    last_login_at TEXT,
+    INTEGER NOT NULL DEFAULT 0,
+    mfa_secret_encrypted TEXT,
+    password_changed_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS email_verification_tokens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY(user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  token_jti TEXT NOT NULL UNIQUE,
+  revoked_at TEXT,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  last_seen_at TEXT,
+  FOREIGN KEY(user_id) REFERENCES users(id)
+);
+
+CREATE TABLE  IF NOT EXISTS auth_attempts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT,
+  ip_address TEXT,
+  action TEXT NOT NULL,
+  success INTEGER NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS audit_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  actor_user_id INTEGER,
+  event_type TEXT NOT NULL,
+  resource_type TEXT,
+  resource_id TEXT,
+  metadata_json TEXT,
+  ip_address TEXT,
+  user_agent TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS oauth_accounts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  provider TEXT NOT NULL,
+  provider_user_id TEXT NOT NULL,
+  provider_email TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(provider, provider_user_id),
+  FOREIGN KEY(user_id) REFERENCES users(id)
+);
 -- organizations table
 CREATE TABLE IF NOT EXISTS organizations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -326,3 +385,4 @@ CREATE TABLE IF NOT EXISTS party_payment_profiles (
     FOREIGN KEY(party_id) REFERENCES parties(id),
     FOREIGN KEY(organization_id) REFERENCES organizations(id)
 );
+

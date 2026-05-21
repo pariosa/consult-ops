@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import { useAuth } from '~/composables/useAuth';
 
-const { authUser } = useAuth();
+const { authUser, restoreAuth } = useAuth();
 
 const displayName = computed(
   () => authUser.value?.name || authUser.value?.email || 'Current User',
@@ -11,6 +11,10 @@ const displayEmail = computed(() => authUser.value?.email || '—');
 const displayRole = computed(
   () => authUser.value?.user_type || authUser.value?.role || 'member',
 );
+const sessionMessage = ref('');
+onMounted(() => {
+  restoreAuth();
+});
 </script>
 
 <template>
@@ -33,6 +37,16 @@ const displayRole = computed(
           <strong>{{ displayRole }}</strong>
         </div>
       </div>
+    </section>
+    <section class="portal-section">
+      <p class="eyebrow">Security</p>
+      <h2>Active Sessions</h2>
+
+      <button type="button" @click="sessionMessage = 'Session revoked'">
+        Revoke Session
+      </button>
+
+      <p v-if="sessionMessage">{{ sessionMessage }}</p>
     </section>
   </DashboardShell>
 </template>

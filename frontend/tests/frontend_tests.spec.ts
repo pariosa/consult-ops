@@ -22,6 +22,9 @@ vi.mock('#imports', () => ({
   navigateTo: vi.fn(),
 }));
 
+vi.stubGlobal('useRouter', () => ({
+  push: vi.fn(),
+}));
 describe('LoginForm', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -77,6 +80,7 @@ describe('LoginForm', () => {
         email: 'client@example.com',
         password: 'StrongPass123!',
         userType: 'client',
+        remember_me: false,
       },
     ]);
   });

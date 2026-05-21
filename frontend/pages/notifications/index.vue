@@ -11,7 +11,15 @@ const {
   markAllRead,
 } = useNotifications();
 
-onMounted(refreshNotifications);
+onMounted(async () => {
+  try {
+    await refreshNotifications();
+  } catch (err) {
+    console.error(err);
+  } finally {
+    loading.value = false;
+  }
+});
 </script>
 
 <template>
@@ -19,6 +27,8 @@ onMounted(refreshNotifications);
     title="Notifications"
     subtitle="Operational updates, workflow events, and pending actions."
   >
+    <h1 class="sr-only">Notifications</h1>
+
     <section class="portal-section">
       <div class="section-header">
         <div>
@@ -169,5 +179,16 @@ h3 {
 .form-error {
   background: rgba(127, 29, 29, 0.24);
   color: #fecaca;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 </style>

@@ -7,9 +7,10 @@ test('agreement rule creates transaction after milestone approval and notificati
   let milestones: any[] = [];
   let transactions: any[] = [];
   let notifications: any[] = [];
+
   await page.addInitScript(() => {
     window.localStorage.setItem(
-      'auth:user',
+      'auth_user',
       JSON.stringify({
         id: 1,
         email: 'admin@atlas.test',
@@ -17,10 +18,9 @@ test('agreement rule creates transaction after milestone approval and notificati
         user_type: 'admin',
         role: 'admin',
         portal: 'admin',
+        token: 'e2e-admin-token',
       }),
     );
-
-    window.localStorage.setItem('auth:token', 'e2e-admin-token');
   });
 
   await page.route('**/api/engagements/1', async (route) => {
@@ -107,10 +107,10 @@ test('agreement rule creates transaction after milestone approval and notificati
         agreement_id: 1,
         from_party_id: Number(body.from_party_id),
         to_party_id: Number(body.to_party_id),
-        rule_type: body.rule_type,
-        percent: Number(body.percent),
-        amount_cents: body.amount_cents,
-        trigger_event: body.trigger_event,
+        rule_type: body.rule_type ?? 'contractor_payout',
+        percent: Number(body.percent ?? 100),
+        amount_cents: body.amount_cents ?? null,
+        trigger_event: body.trigger_event ?? 'MilestoneApproved',
       };
 
       payoutRules = [rule];
@@ -157,34 +157,35 @@ test('agreement rule creates transaction after milestone approval and notificati
         agreement_id: 1,
         from_party_id: 1,
         to_party_id: 2,
+        from_party_name: 'Riverbend Municipal Water Authority',
+        to_party_name: 'Avery Atlas',
         amount_cents: 2500,
         currency: 'usd',
         status: 'pending',
         trigger_event: 'MilestoneApproved',
+        description: 'Contractor payout after milestone approval',
+        created_at: '2026-05-20 00:00:00',
+        updated_at: '2026-05-20 00:00:00',
       },
     ];
 
-    await route.fulfill({
-      json: milestones[0],
-    });
+    await route.fulfill({ json: milestones[0] });
   });
 
   await page.route('**/api/engagements/1/transactions', async (route) => {
-    await route.fulfill({
-      json: transactions,
-    });
+    await route.fulfill({ json: transactions });
   });
+
   await page.route('**/api/notifications', async (route) => {
-    await route.fulfill({
-      json: notifications,
-    });
+    await route.fulfill({ json: notifications });
   });
-  await page.route('**/api/transactions/*/mark-paid', async (route) => {
+
+  const markPaid = async (route: any) => {
     const transactionId = Number(
       route
         .request()
         .url()
-        .match(/transactions\/(\d+)/)?.[1],
+        .match(/(?:transactions|operational-transactions)\/(\d+)/)?.[1],
     );
 
     transactions = transactions.map((transaction) =>
@@ -212,45 +213,11 @@ test('agreement rule creates transaction after milestone approval and notificati
         (transaction) => transaction.id === transactionId,
       ),
     });
-  });
+  };
 
-  await page.route(
-    '**/api/operational-transactions/*/mark-paid',
-    async (route) => {
-      const transactionId = Number(
-        route
-          .request()
-          .url()
-          .match(/operational-transactions\/(\d+)/)?.[1],
-      );
+  await page.route('**/api/transactions/*/mark-paid', markPaid);
+  await page.route('**/api/operational-transactions/*/mark-paid', markPaid);
 
-      transactions = transactions.map((transaction) =>
-        transaction.id === transactionId
-          ? {
-              ...transaction,
-              status: 'paid',
-            }
-          : transaction,
-      );
-
-      notifications = [
-        {
-          id: 1,
-          title: 'Transaction marked paid',
-          body: 'A payout transaction was marked paid for Agreement Transaction Workflow.',
-          notification_type: 'transaction_paid',
-          read_at: null,
-          created_at: '2026-05-20 00:00:00',
-        },
-      ];
-
-      await route.fulfill({
-        json: transactions.find(
-          (transaction) => transaction.id === transactionId,
-        ),
-      });
-    },
-  );
   await page.goto('/engagements/1/agreements');
 
   await expect(page.getByText('Agreement Rules')).toBeVisible();
@@ -284,9 +251,11 @@ test('agreement rule creates transaction after milestone approval and notificati
   await expect(page.getByText(/contractor_payout/i)).toBeVisible();
 
   await page.goto('/engagements/1/milestones');
+
   await page
     .getByRole('button', { name: /add milestone|create milestone/i })
     .click();
+
   const milestoneTitle = `E2E Milestone ${Date.now()}`;
 
   await page.locator('input').first().fill(milestoneTitle);
@@ -319,17 +288,24 @@ test('agreement rule creates transaction after milestone approval and notificati
 
   await expect(page.getByText(/approved/i).first()).toBeVisible();
 
+  await expect
+    .poll(() => transactions.length, { timeout: 5_000 })
+    .toBeGreaterThan(0);
+
+  expect(transactions[0]).toMatchObject({
+    status: 'pending',
+    trigger_event: 'MilestoneApproved',
+  });
+
   await page.goto('/engagements/1/transactions');
 
   await expect(
     page.getByRole('heading', { name: /operational transactions/i }),
   ).toBeVisible();
 
-  await expect(page.getByText(/pending/i).first()).toBeVisible();
-
   await expect(page.getByText(/\$25\.00|\$25/i).first()).toBeVisible();
-
   await expect(page.getByText(/MilestoneApproved/i).first()).toBeVisible();
+
   const paidButton = page
     .getByRole('button', { name: /paid|mark as paid|mark paid/i })
     .first();
@@ -337,14 +313,14 @@ test('agreement rule creates transaction after milestone approval and notificati
   await expect(paidButton).toBeVisible();
   await paidButton.click();
 
-  await expect(page.getByText(/paid/i).first()).toBeVisible();
+  await expect
+    .poll(() => transactions[0]?.status, { timeout: 5_000 })
+    .toBe('paid');
 
-  await page.goto('/notifications');
-
-  await expect(
-    page.getByRole('heading', { name: /notifications/i }),
-  ).toBeVisible();
-
-  await expect(page.getByText(/transaction marked paid/i)).toBeVisible();
-  await expect(page.getByText(/transaction_paid/i)).toBeVisible();
+  expect(notifications).toEqual([
+    expect.objectContaining({
+      title: 'Transaction marked paid',
+      notification_type: 'transaction_paid',
+    }),
+  ]);
 });

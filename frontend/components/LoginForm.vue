@@ -34,7 +34,10 @@
         required
       />
     </div>
-
+    <label class="remember-row">
+      <input v-model="rememberMe" type="checkbox" />
+      <span>Remember me</span>
+    </label>
     <slot name="extra"></slot>
 
     <button type="submit">{{ submitText }}</button>
@@ -56,14 +59,19 @@ const props = defineProps({
 const emits = defineEmits<{
   (
     e: 'submit',
-    payload: { email: string; password: string; userType: string },
+    payload: {
+      email: string;
+      password: string;
+      userType: string;
+      remember_me: boolean;
+    },
   ): void;
 }>();
 
 const email = ref(props.initialEmail);
 const password = ref(props.initialPassword);
 const error = ref('');
-
+const rememberMe = ref(false);
 const title = computed(() => {
   if (props.userType === 'client') return 'Client Portal Login';
   if (props.userType === 'admin') return 'Admin Console Login';
@@ -95,6 +103,7 @@ const submitForm = () => {
     email: email.value,
     password: password.value,
     userType: props.userType,
+    remember_me: rememberMe.value,
   });
 };
 </script>
@@ -169,5 +178,16 @@ button {
 .error {
   color: #f87171;
   margin: 0;
+}
+.remember-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #cbd5e1;
+  font-size: 0.9rem;
+}
+
+.remember-row input {
+  width: auto;
 }
 </style>

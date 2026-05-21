@@ -2,6 +2,7 @@
 import { useRoute } from 'nuxt/app';
 import { computed, ref } from 'vue';
 import ResetPasswordForm from '~/components/ResetPasswordForm.vue';
+import { useApi } from '~/composables/useApi';
 
 const route = useRoute();
 
@@ -12,7 +13,7 @@ const token = computed(() => {
   const value = route.query.token;
   return typeof value === 'string' ? value : '';
 });
-
+const { post } = useApi();
 const submit = async (payload: { password: string }) => {
   message.value = '';
   error.value = '';
@@ -22,7 +23,7 @@ const submit = async (payload: { password: string }) => {
     return;
   }
 
-  const res = await fetch('http://127.0.0.1:8000/api/auth/reset-password', {
+  const res = await post('http://127.0.0.1:8000/api/auth/reset-password', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

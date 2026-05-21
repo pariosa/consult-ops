@@ -1,3 +1,4 @@
 [env]
 SQLX_OFFLINE = "false"
 DATABASE_URL = "sqlite://./db/consult_ops.db?mode=rwc"
+JWT_SECRET = { value = "test-jwt-secret-that-is-long-enough", force = true }

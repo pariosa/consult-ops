@@ -1,39 +1,21 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import LoginForm from '~/components/LoginForm.vue';
+import { useAuth } from '~/composables/useAuth';
 import { getPortalRoute } from '~/utils/authRedirect';
 
 const error = ref('');
+const { login: authLogin } = useAuth();
 
-const login = async (payload: {
-  email: string;
-  password: string;
-  userType: string;
-}) => {
+const login = async (payload) => {
   error.value = '';
 
-  const res = await fetch('http://127.0.0.1:8000/api/auth/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: payload.email, password: payload.password }),
-  });
-
-  if (!res.ok) {
-    error.value = await res.text();
-    return;
+  try {
+    const data = await authLogin(payload);
+    await navigateTo(getPortalRoute(data.user.user_type || payload.userType));
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Unable to log in.';
   }
-  const data = await res.json();
-
-  localStorage.setItem(
-    'auth_user',
-    JSON.stringify({
-      ...data.user,
-      token: data.token,
-      portal: data.user.user_type || payload.userType,
-    }),
-  );
-
-  await navigateTo(getPortalRoute(data.user.user_type || payload.userType));
 };
 </script>
 

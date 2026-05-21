@@ -11,21 +11,32 @@ const submit = async (payload: { email: string }) => {
   error.value = '';
   devResetToken.value = '';
 
-  const res = await fetch('http://127.0.0.1:8000/api/auth/forgot-password', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  try {
+    const res = await fetch('http://127.0.0.1:8000/api/auth/forgot-password', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
 
-  if (!res.ok) {
-    error.value = await res.text();
-    return;
+    // Try parsing optional dev token
+    try {
+      const data = await res.json();
+
+      if (data?.reset_token) {
+        devResetToken.value = data.reset_token;
+      }
+    } catch {
+      // ignore parse failures intentionally
+    }
+  } catch {
+    // intentionally swallow errors
   }
 
-  const data = await res.json();
+  // ALWAYS show safe enumeration-resistant message
   message.value =
-    data.message || 'If an account exists, reset instructions were generated.';
-  devResetToken.value = data.reset_token || '';
+    'If an account exists for this email, a password reset link has been sent.';
 };
 </script>
 
@@ -33,7 +44,9 @@ const submit = async (payload: { email: string }) => {
   <section class="auth-page">
     <div class="copy">
       <p class="eyebrow">Secure Recovery</p>
+
       <h1>Get back into your workspace.</h1>
+
       <p>
         The recovery flow generates a single-use reset token and prepares the
         platform for email-based recovery.
@@ -45,7 +58,9 @@ const submit = async (payload: { email: string }) => {
 
       <div v-if="devResetToken" class="dev-token">
         <p>Dev reset token:</p>
+
         <code>{{ devResetToken }}</code>
+
         <NuxtLink :to="`/reset-password?token=${devResetToken}`">
           Continue to reset password
         </NuxtLink>

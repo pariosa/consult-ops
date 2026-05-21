@@ -30,14 +30,10 @@ const register = async (payload: {
     return;
   }
 
-  const data = await res.json();
-  message.value = data.message || 'Account created successfully.';
+  await res.json();
 
-  localStorage.setItem('auth_user', JSON.stringify(data));
-
-  setTimeout(() => {
-    navigateTo('/consultant-login');
-  }, 600);
+  message.value =
+    'Account created. Please verify your email before logging in.';
 };
 </script>
 

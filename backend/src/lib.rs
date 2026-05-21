@@ -4,6 +4,7 @@ pub mod db;
 pub mod domain;
 pub mod handlers;
 pub mod models;
+pub mod routes;
 pub mod seed_demo;
 pub mod services;
 pub mod utils;

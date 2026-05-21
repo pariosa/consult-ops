@@ -6,7 +6,15 @@ export default defineConfig({
   test: {
     environment: 'happy-dom',
     globals: true,
+    exclude: [
+      'node_modules',
+      'dist',
+      '.nuxt',
+      'tests/e2e/**',
+      '**/*.spec.e2e.ts',
+    ],
   },
+
   resolve: {
     alias: {
       '~': new URL('./', import.meta.url).pathname,

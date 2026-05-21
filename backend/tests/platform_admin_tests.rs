@@ -1,353 +1,365 @@
-use actix_web::{App, test, web};
-use backend::auth::{Claims, hash_password};
-use backend::db::Db;
-use backend::handlers::{
-    assign_platform_user_to_organization, create_platform_organization, create_platform_user,
-    list_platform_organization_members, list_platform_organizations, list_platform_users,
-};
-use chrono::{Duration, Utc};
-use jsonwebtoken::{EncodingKey, Header, encode};
-use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
+mod common;
 
-async fn setup_db() -> Db {
-    let pool = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect("sqlite::memory:")
-        .await
-        .unwrap();
+use actix_web::test;
+use backend::auth::hash_password;
+use chrono::Utc;
+use common::{setup_test_db, test_app};
 
-    sqlx::query(
+async fn seed_verified_user(
+    db: &backend::db::Db,
+    email: &str,
+    password: &str,
+    name: &str,
+    user_type: &str,
+) -> i64 {
+    let now = Utc::now().to_rfc3339();
+    let password_hash = hash_password(password).unwrap();
+
+    let rec = sqlx::query(
         r#"
-        CREATE TABLE users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            email TEXT NOT NULL UNIQUE,
-            password_hash TEXT NOT NULL,
-            name TEXT,
-            user_type TEXT NOT NULL DEFAULT 'client',
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
-        "#,
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
-
-    sqlx::query(
-        r#"
-        CREATE TABLE organizations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
-        "#,
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
-
-    sqlx::query(
-        r#"
-        CREATE TABLE organization_members (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            organization_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            role TEXT NOT NULL DEFAULT 'member',
-            status TEXT NOT NULL DEFAULT 'active',
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(organization_id, user_id)
-        );
-        "#,
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
-
-    seed_user(
-        &pool,
-        "superadmin@consultops.test",
-        "Super Admin",
-        "super_admin",
-    )
-    .await;
-    seed_user(&pool, "admin@atlas.test", "Avery Atlas", "admin").await;
-
-    Db { pool: pool.into() }
-}
-
-async fn seed_user(pool: &SqlitePool, email: &str, name: &str, user_type: &str) -> i64 {
-    let password_hash = hash_password("DemoPass123!").unwrap();
-
-    let id: i64 = sqlx::query_scalar(
-        r#"
-        INSERT INTO users (email, password_hash, name, user_type, created_at, updated_at)
-        VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
-        RETURNING id
+        INSERT INTO users (
+            email,
+            password_hash,
+            name,
+            user_type,
+            email_verified_at,
+            created_at,
+            updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(email)
     .bind(password_hash)
     .bind(name)
     .bind(user_type)
-    .fetch_one(pool)
+    .bind(&now)
+    .bind(&now)
+    .bind(&now)
+    .execute(&*db.pool)
     .await
     .unwrap();
 
-    id
+    rec.last_insert_rowid()
 }
 
-fn token_for(user_id: i64, email: &str, user_type: &str) -> String {
-    let claims = Claims {
-        sub: user_id.to_string(),
-        email: email.to_string(),
-        user_type: user_type.to_string(),
-        exp: (Utc::now() + Duration::hours(1)).timestamp() as usize,
-    };
+async fn seed_organization(db: &backend::db::Db, name: &str) -> i64 {
+    let now = Utc::now().to_rfc3339();
 
-    encode(
-        &Header::default(),
-        &claims,
-        &EncodingKey::from_secret("consult-ops-local-dev-secret".as_bytes()),
+    let rec = sqlx::query(
+        r#"
+        INSERT INTO organizations (
+            name,
+            created_at,
+            updated_at
+        )
+        VALUES (?, ?, ?)
+        "#,
     )
-    .unwrap()
+    .bind(name)
+    .bind(&now)
+    .bind(&now)
+    .execute(&*db.pool)
+    .await
+    .unwrap();
+
+    rec.last_insert_rowid()
 }
 
-fn auth_header(token: &str) -> (&'static str, String) {
-    ("Authorization", format!("Bearer {}", token))
-}
-
-#[actix_rt::test]
+#[actix_web::test]
 async fn super_admin_can_create_and_list_platform_organizations() {
-    let db = setup_db().await;
-    let token = token_for(1, "superadmin@consultops.test", "super_admin");
+    let db = setup_test_db().await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db))
-            .route(
-                "/api/platform/organizations",
-                web::post().to(create_platform_organization),
-            )
-            .route(
-                "/api/platform/organizations",
-                web::get().to(list_platform_organizations),
-            ),
+    seed_verified_user(
+        &db,
+        "root@atlas.test",
+        "DemoPass123!",
+        "Root Admin",
+        "super_admin",
     )
     .await;
 
-    let req = test::TestRequest::post()
-        .uri("/api/platform/organizations")
-        .insert_header(auth_header(&token))
+    let app = test::init_service(test_app(db.clone())).await;
+
+    let login_req = test::TestRequest::post()
+        .uri("/api/auth/login")
         .set_json(serde_json::json!({
-            "name": "New Platform Org"
+            "email": "root@atlas.test",
+            "password": "DemoPass123!"
         }))
         .to_request();
 
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 201);
+    let login_resp: serde_json::Value = test::call_and_read_body_json(&app, login_req).await;
+    let token = login_resp["token"].as_str().unwrap().to_string();
 
-    let req = test::TestRequest::get()
+    let create_req = test::TestRequest::post()
         .uri("/api/platform/organizations")
-        .insert_header(auth_header(&token))
+        .insert_header(("Authorization", format!("Bearer {}", token)))
+        .set_json(serde_json::json!({
+            "name": "Atlas Operations"
+        }))
         .to_request();
 
-    let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+    let create_resp = test::call_service(&app, create_req).await;
+    assert_eq!(create_resp.status().as_u16(), 201);
+
+    let list_req = test::TestRequest::get()
+        .uri("/api/platform/organizations")
+        .insert_header(("Authorization", format!("Bearer {}", token)))
+        .to_request();
+
+    let orgs: serde_json::Value = test::call_and_read_body_json(&app, list_req).await;
 
     assert!(
-        body.as_array()
+        orgs.as_array()
             .unwrap()
             .iter()
-            .any(|org| { org.get("name").and_then(|v| v.as_str()) == Some("New Platform Org") })
+            .any(|org| { org["name"] == "Atlas Operations" })
     );
 }
 
-#[actix_rt::test]
+#[actix_web::test]
 async fn non_super_admin_cannot_create_platform_organization() {
-    let db = setup_db().await;
-    let token = token_for(2, "admin@atlas.test", "admin");
+    let db = setup_test_db().await;
 
-    let app = test::init_service(App::new().app_data(web::Data::new(db)).route(
-        "/api/platform/organizations",
-        web::post().to(create_platform_organization),
-    ))
+    seed_verified_user(
+        &db,
+        "admin@atlas.test",
+        "DemoPass123!",
+        "Org Admin",
+        "admin",
+    )
     .await;
 
-    let req = test::TestRequest::post()
+    let app = test::init_service(test_app(db.clone())).await;
+
+    let login_req = test::TestRequest::post()
+        .uri("/api/auth/login")
+        .set_json(serde_json::json!({
+            "email": "admin@atlas.test",
+            "password": "DemoPass123!"
+        }))
+        .to_request();
+
+    let login_resp: serde_json::Value = test::call_and_read_body_json(&app, login_req).await;
+    let token = login_resp["token"].as_str().unwrap().to_string();
+
+    let create_req = test::TestRequest::post()
         .uri("/api/platform/organizations")
-        .insert_header(auth_header(&token))
+        .insert_header(("Authorization", format!("Bearer {}", token)))
         .set_json(serde_json::json!({
             "name": "Blocked Org"
         }))
         .to_request();
 
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 403);
+    let resp = test::call_service(&app, create_req).await;
+
+    assert_eq!(resp.status().as_u16(), 403);
 }
 
-#[actix_rt::test]
+#[actix_web::test]
 async fn super_admin_can_create_and_list_platform_users() {
-    let db = setup_db().await;
-    let token = token_for(1, "superadmin@consultops.test", "super_admin");
+    let db = setup_test_db().await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db))
-            .route("/api/platform/users", web::post().to(create_platform_user))
-            .route("/api/platform/users", web::get().to(list_platform_users)),
+    seed_verified_user(
+        &db,
+        "root@atlas.test",
+        "DemoPass123!",
+        "Root Admin",
+        "super_admin",
     )
     .await;
 
-    let req = test::TestRequest::post()
-        .uri("/api/platform/users")
-        .insert_header(auth_header(&token))
+    let app = test::init_service(test_app(db.clone())).await;
+
+    let login_req = test::TestRequest::post()
+        .uri("/api/auth/login")
         .set_json(serde_json::json!({
-            "email": "new.user@example.com",
-            "name": "New User",
-            "user_type": "contractor",
+            "email": "root@atlas.test",
             "password": "DemoPass123!"
         }))
         .to_request();
 
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 201);
+    let login_resp: serde_json::Value = test::call_and_read_body_json(&app, login_req).await;
+    let token = login_resp["token"].as_str().unwrap().to_string();
 
-    let req = test::TestRequest::get()
+    let create_req = test::TestRequest::post()
         .uri("/api/platform/users")
-        .insert_header(auth_header(&token))
-        .to_request();
-
-    let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
-
-    assert!(body.as_array().unwrap().iter().any(|user| {
-        user.get("email").and_then(|v| v.as_str()) == Some("new.user@example.com")
-    }));
-}
-
-#[actix_rt::test]
-async fn super_admin_can_assign_user_to_organization() {
-    let db = setup_db().await;
-    let token = token_for(1, "superadmin@consultops.test", "super_admin");
-
-    let org_id: i64 = sqlx::query_scalar(
-        r#"
-        INSERT INTO organizations (name, created_at, updated_at)
-        VALUES ('Atlas Field Consulting', datetime('now'), datetime('now'))
-        RETURNING id
-        "#,
-    )
-    .fetch_one(db.pool.as_ref())
-    .await
-    .unwrap();
-
-    let contractor_id = seed_user(
-        db.pool.as_ref(),
-        "contractor@example.com",
-        "Contractor User",
-        "contractor",
-    )
-    .await;
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db))
-            .route(
-                "/api/platform/organizations/{id}/members",
-                web::post().to(assign_platform_user_to_organization),
-            )
-            .route(
-                "/api/platform/organizations/{id}/members",
-                web::get().to(list_platform_organization_members),
-            ),
-    )
-    .await;
-
-    let req = test::TestRequest::post()
-        .uri(&format!("/api/platform/organizations/{}/members", org_id))
-        .insert_header(auth_header(&token))
+        .insert_header(("Authorization", format!("Bearer {}", token)))
         .set_json(serde_json::json!({
-            "user_id": contractor_id,
-            "role": "contractor"
+            "email": "new-user@atlas.test",
+            "name": "New User",
+            "user_type": "operations_manager",
+            "password": "DemoPass123!"
         }))
         .to_request();
 
-    let resp = test::call_service(&app, req).await;
-    assert_eq!(resp.status(), 200);
+    let create_resp = test::call_service(&app, create_req).await;
+    assert_eq!(create_resp.status().as_u16(), 201);
 
-    let req = test::TestRequest::get()
-        .uri(&format!("/api/platform/organizations/{}/members", org_id))
-        .insert_header(auth_header(&token))
+    let list_req = test::TestRequest::get()
+        .uri("/api/platform/users")
+        .insert_header(("Authorization", format!("Bearer {}", token)))
         .to_request();
 
-    let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+    let users: serde_json::Value = test::call_and_read_body_json(&app, list_req).await;
 
-    let members = body.as_array().unwrap();
-
-    assert!(members.iter().any(|member| {
-        member.get("email").and_then(|v| v.as_str()) == Some("contractor@example.com")
-            && member.get("role").and_then(|v| v.as_str()) == Some("contractor")
-    }));
+    assert!(
+        users
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|user| { user["email"] == "new-user@atlas.test" })
+    );
 }
 
-#[actix_rt::test]
-async fn assigning_same_user_updates_existing_membership_role() {
-    let db = setup_db().await;
-    let pool = db.pool.clone();
-    let token = token_for(1, "superadmin@consultops.test", "super_admin");
+#[actix_web::test]
+async fn super_admin_can_assign_user_to_organization() {
+    let db = setup_test_db().await;
 
-    let org_id: i64 = sqlx::query_scalar(
-        r#"
-        INSERT INTO organizations (name, created_at, updated_at)
-        VALUES ('Atlas Field Consulting', datetime('now'), datetime('now'))
-        RETURNING id
-        "#,
+    seed_verified_user(
+        &db,
+        "root@atlas.test",
+        "DemoPass123!",
+        "Root Admin",
+        "super_admin",
     )
-    .fetch_one(db.pool.as_ref())
-    .await
-    .unwrap();
+    .await;
 
-    let user_id = seed_user(
-        db.pool.as_ref(),
-        "ops@example.com",
-        "Ops User",
+    let user_id = seed_verified_user(
+        &db,
+        "member@atlas.test",
+        "DemoPass123!",
+        "Member User",
         "operations_manager",
     )
     .await;
 
-    let app = test::init_service(App::new().app_data(web::Data::new(db)).route(
-        "/api/platform/organizations/{id}/members",
-        web::post().to(assign_platform_user_to_organization),
-    ))
+    let organization_id = seed_organization(&db, "Atlas Client Org").await;
+
+    let app = test::init_service(test_app(db.clone())).await;
+
+    let login_req = test::TestRequest::post()
+        .uri("/api/auth/login")
+        .set_json(serde_json::json!({
+            "email": "root@atlas.test",
+            "password": "DemoPass123!"
+        }))
+        .to_request();
+
+    let login_resp: serde_json::Value = test::call_and_read_body_json(&app, login_req).await;
+    let token = login_resp["token"].as_str().unwrap().to_string();
+
+    let assign_req = test::TestRequest::post()
+        .uri(&format!(
+            "/api/platform/organizations/{}/members",
+            organization_id
+        ))
+        .insert_header(("Authorization", format!("Bearer {}", token)))
+        .set_json(serde_json::json!({
+            "user_id": user_id,
+            "role": "operations_manager"
+        }))
+        .to_request();
+
+    let assign_resp = test::call_service(&app, assign_req).await;
+    assert_eq!(assign_resp.status().as_u16(), 200);
+
+    let list_req = test::TestRequest::get()
+        .uri(&format!(
+            "/api/platform/organizations/{}/members",
+            organization_id
+        ))
+        .insert_header(("Authorization", format!("Bearer {}", token)))
+        .to_request();
+
+    let members: serde_json::Value = test::call_and_read_body_json(&app, list_req).await;
+
+    assert_eq!(members.as_array().unwrap().len(), 1);
+    assert_eq!(members[0]["user_id"], user_id);
+    assert_eq!(members[0]["role"], "operations_manager");
+    assert_eq!(members[0]["status"], "active");
+}
+
+#[actix_web::test]
+async fn assigning_same_user_updates_existing_membership_role() {
+    let db = setup_test_db().await;
+
+    seed_verified_user(
+        &db,
+        "root@atlas.test",
+        "DemoPass123!",
+        "Root Admin",
+        "super_admin",
+    )
     .await;
 
-    for role in ["contractor", "finance_admin"] {
-        let req = test::TestRequest::post()
-            .uri(&format!("/api/platform/organizations/{}/members", org_id))
-            .insert_header(auth_header(&token))
-            .set_json(serde_json::json!({
-                "user_id": user_id,
-                "role": role
-            }))
-            .to_request();
-
-        let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status(), 200);
-    }
-
-    let count: i64 = sqlx::query_scalar::<_, i64>(
-        r#"
-    SELECT COUNT(*)
-    FROM organization_members
-    WHERE organization_id = ?
-      AND user_id = ?
-    "#,
+    let user_id = seed_verified_user(
+        &db,
+        "member@atlas.test",
+        "DemoPass123!",
+        "Member User",
+        "operations_manager",
     )
-    .bind(org_id)
-    .bind(user_id)
-    .fetch_one(pool.as_ref())
-    .await
-    .unwrap();
+    .await;
 
-    assert_eq!(count, 1);
+    let organization_id = seed_organization(&db, "Atlas Client Org").await;
+
+    let app = test::init_service(test_app(db.clone())).await;
+
+    let login_req = test::TestRequest::post()
+        .uri("/api/auth/login")
+        .set_json(serde_json::json!({
+            "email": "root@atlas.test",
+            "password": "DemoPass123!"
+        }))
+        .to_request();
+
+    let login_resp: serde_json::Value = test::call_and_read_body_json(&app, login_req).await;
+    let token = login_resp["token"].as_str().unwrap().to_string();
+
+    let first_assign_req = test::TestRequest::post()
+        .uri(&format!(
+            "/api/platform/organizations/{}/members",
+            organization_id
+        ))
+        .insert_header(("Authorization", format!("Bearer {}", token)))
+        .set_json(serde_json::json!({
+            "user_id": user_id,
+            "role": "operations_manager"
+        }))
+        .to_request();
+
+    let first_resp = test::call_service(&app, first_assign_req).await;
+    assert_eq!(first_resp.status().as_u16(), 200);
+
+    let second_assign_req = test::TestRequest::post()
+        .uri(&format!(
+            "/api/platform/organizations/{}/members",
+            organization_id
+        ))
+        .insert_header(("Authorization", format!("Bearer {}", token)))
+        .set_json(serde_json::json!({
+            "user_id": user_id,
+            "role": "finance_admin"
+        }))
+        .to_request();
+
+    let second_resp = test::call_service(&app, second_assign_req).await;
+    assert_eq!(second_resp.status().as_u16(), 200);
+
+    let list_req = test::TestRequest::get()
+        .uri(&format!(
+            "/api/platform/organizations/{}/members",
+            organization_id
+        ))
+        .insert_header(("Authorization", format!("Bearer {}", token)))
+        .to_request();
+
+    let members: serde_json::Value = test::call_and_read_body_json(&app, list_req).await;
+
+    assert_eq!(members.as_array().unwrap().len(), 1);
+    assert_eq!(members[0]["user_id"], user_id);
+    assert_eq!(members[0]["role"], "finance_admin");
+    assert_eq!(members[0]["status"], "active");
 }

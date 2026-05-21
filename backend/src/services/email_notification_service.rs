@@ -1,5 +1,8 @@
 use serde::Serialize;
 
+use resend_rs::Resend;
+use resend_rs::types::CreateEmailBaseOptions;
+
 #[derive(Debug, Clone, Serialize)]
 pub struct EmailMessage {
     pub to: String,
@@ -22,9 +25,54 @@ impl EmailNotificationService {
             return Ok(());
         }
 
-        Err("No production email provider configured.".to_string())
+        let from = std::env::var("EMAIL_FROM")
+            .unwrap_or_else(|_| "Consult Ops <onboarding@resend.dev>".to_string());
+
+        let resend = Resend::default();
+
+        let html = format!(
+            "<div style=\"font-family: sans-serif; line-height: 1.5;\">{}</div>",
+            message.body.replace('\n', "<br>")
+        );
+
+        let email = CreateEmailBaseOptions::new(from, [message.to.as_str()], message.subject)
+            .with_text(&message.body)
+            .with_html(&html);
+
+        resend
+            .emails
+            .send(email)
+            .await
+            .map_err(|err| err.to_string())?;
+
+        Ok(())
     }
 
+    pub async fn email_verification(to: String, verification_url: String) -> Result<(), String> {
+        Self::send(EmailMessage {
+            to,
+            subject: "Verify your Consult Ops account".to_string(),
+            body: format!(
+                "Welcome to Consult Ops.\n\nVerify your email here:\n{}\n\nIf you did not create this account, you can ignore this email.",
+                verification_url
+            ),
+        })
+        .await
+    }
+
+    pub async fn password_reset(to: String, reset_url: String) -> Result<(), String> {
+        Self::send(EmailMessage {
+            to,
+            subject: "Reset your Consult Ops password".to_string(),
+            body: format!(
+                "Reset your password here:\n{}\n\nIf you did not request this, you can ignore this email.",
+                reset_url
+            ),
+        })
+        .await
+    }
+
+    // keep your existing invitation/contract/payment methods below
     pub async fn invitation(to: String, role: String, invite_url: String) -> Result<(), String> {
         Self::send(EmailMessage {
             to,

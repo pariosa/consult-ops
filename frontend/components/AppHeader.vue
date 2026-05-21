@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue';
 import { useAuth } from '../composables/useAuth';
 
-const { authUser, isLoggedIn, logout } = useAuth();
+const { authUser, isLoggedIn, restoreAuth, logout } = useAuth();
 
 const menuOpen = ref(false);
 
@@ -12,6 +12,10 @@ const displayName = computed(() => {
 
 const roleLabel = computed(() => {
   return authUser.value?.role || '';
+});
+
+onMounted(() => {
+  restoreAuth();
 });
 
 const canImpersonate = computed(() => authUser.value?.role === 'admin');

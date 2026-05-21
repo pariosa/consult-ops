@@ -27,7 +27,11 @@ hex = "0.4"
 futures-util = "0.3"
 actix-rt= "2"
 hmac = "0.12" 
+resend-rs = "0.25.1"
 
 [lib]
 name = "backend"
 path = "src/lib.rs"
+
+[env]
+JWT_SECRET = { value = "test-jwt-secret-that-is-long-enough", force = true }
