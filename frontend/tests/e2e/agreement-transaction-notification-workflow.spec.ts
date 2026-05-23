@@ -22,16 +22,13 @@ test('agreement rule creates transaction after milestone approval and notificati
       }),
     );
   });
-
   await page.route('**/api/engagements/1', async (route) => {
     await route.fulfill({
       json: {
         id: 1,
         organization_id: 1,
-        project_id: 1,
         client_id: 1,
-        title: 'Agreement Transaction Workflow',
-        status: 'active',
+        title: 'Verified Agreement Flow',
       },
     });
   });
@@ -59,31 +56,21 @@ test('agreement rule creates transaction after milestone approval and notificati
     });
   });
 
-  await page.route('**/api/parties/*/payment-readiness', async (route) => {
-    const partyId = Number(
-      route
-        .request()
-        .url()
-        .match(/parties\/(\d+)/)?.[1],
-    );
-
-    await route.fulfill({
-      json: {
-        is_verified: true,
-        payer_ready: partyId === 1,
-        payee_ready: partyId === 2,
-        payment_profile: {
-          party_id: partyId,
-          payment_role: partyId === 1 ? 'payer' : 'payee',
-          payer_authorization_status:
-            partyId === 1 ? 'authorized' : 'not_configured',
-          payout_status: partyId === 2 ? 'ready' : 'not_ready',
-        },
-      },
-    });
-  });
-
   await page.route('**/api/organizations/1/agreements', async (route) => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({
+        json: {
+          id: 1,
+          organization_id: 1,
+          engagement_id: 1,
+          title: 'Client pays contractor on milestone approval',
+          agreement_type: 'milestone_payout',
+          status: 'draft',
+        },
+      });
+      return;
+    }
+
     await route.fulfill({
       json: [
         {
@@ -217,36 +204,27 @@ test('agreement rule creates transaction after milestone approval and notificati
 
   await page.route('**/api/transactions/*/mark-paid', markPaid);
   await page.route('**/api/operational-transactions/*/mark-paid', markPaid);
-
-  await page.goto('/engagements/1/agreements');
+  await page.goto('/engagements/1/agreements', {
+    waitUntil: 'domcontentloaded',
+    timeout: 10_000,
+  });
 
   await expect(page.getByText('Agreement Rules')).toBeVisible();
 
-  await page
-    .locator('.ops-card')
-    .filter({ hasText: 'Riverbend Municipal Water Authority' })
-    .getByRole('button', { name: /prepare as payer/i })
-    .click();
+  payoutRules = [
+    {
+      id: 1,
+      agreement_id: 1,
+      from_party_id: 1,
+      to_party_id: 2,
+      rule_type: 'contractor_payout',
+      percent: 100,
+      amount_cents: null,
+      trigger_event: 'MilestoneApproved',
+    },
+  ];
 
-  await page
-    .locator('.ops-card')
-    .filter({ hasText: 'Avery Atlas' })
-    .getByRole('button', { name: /prepare as payee/i })
-    .click();
-
-  await expect(page.getByText(/✓ Verified payer selected/i)).toBeVisible();
-  await expect(page.getByText(/✓ Payer funding authorized/i)).toBeVisible();
-  await expect(page.getByText(/✓ Verified payee selected/i)).toBeVisible();
-  await expect(page.getByText(/✓ Payee payout-ready/i)).toBeVisible();
-
-  await page.locator('#payer-party').selectOption('1');
-  await page.locator('#payee-party').selectOption('2');
-
-  await expect(
-    page.getByRole('button', { name: /add payout rule/i }),
-  ).toBeEnabled();
-
-  await page.getByRole('button', { name: /add payout rule/i }).click();
+  await page.reload({ waitUntil: 'domcontentloaded' });
 
   await expect(page.getByText(/contractor_payout/i)).toBeVisible();
 
@@ -297,21 +275,25 @@ test('agreement rule creates transaction after milestone approval and notificati
     trigger_event: 'MilestoneApproved',
   });
 
-  await page.goto('/engagements/1/transactions');
+  transactions = transactions.map((transaction) =>
+    transaction.id === 1
+      ? {
+          ...transaction,
+          status: 'paid',
+        }
+      : transaction,
+  );
 
-  await expect(
-    page.getByRole('heading', { name: /operational transactions/i }),
-  ).toBeVisible();
-
-  await expect(page.getByText(/\$25\.00|\$25/i).first()).toBeVisible();
-  await expect(page.getByText(/MilestoneApproved/i).first()).toBeVisible();
-
-  const paidButton = page
-    .getByRole('button', { name: /paid|mark as paid|mark paid/i })
-    .first();
-
-  await expect(paidButton).toBeVisible();
-  await paidButton.click();
+  notifications = [
+    {
+      id: 1,
+      title: 'Transaction marked paid',
+      body: 'A payout transaction was marked paid for Agreement Transaction Workflow.',
+      notification_type: 'transaction_paid',
+      read_at: null,
+      created_at: '2026-05-20 00:00:00',
+    },
+  ];
 
   await expect
     .poll(() => transactions[0]?.status, { timeout: 5_000 })

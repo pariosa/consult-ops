@@ -9,6 +9,7 @@ pub mod engagement_billing;
 pub mod engagement_milestone;
 mod invoice;
 pub mod notification;
+pub mod onboarding_handler;
 pub mod operational_agreement;
 pub mod operational_event;
 pub mod operational_finance;
@@ -30,6 +31,9 @@ pub use platform_admin::{
 };
 
 pub use agreement_payout_rule::{create_payout_rule, list_payout_rules};
+pub use onboarding_handler::{
+    create_my_organization, list_my_organizations, set_current_organization,
+};
 
 pub use client::{create_client, get_clients};
 pub use contract::{create_contract, get_contracts};

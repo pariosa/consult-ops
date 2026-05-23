@@ -1,5 +1,15 @@
 PRAGMA foreign_keys = ON;
 
+CREATE TABLE IF NOT EXISTS organizations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    slug TEXT UNIQUE,
+    created_by_user_id INTEGER,
+    created_at TEXT,
+    updated_at TEXT,
+    FOREIGN KEY(created_by_user_id) REFERENCES users(id)
+);
+
 -- users table -- and Authehtication scaffold
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -12,9 +22,11 @@ CREATE TABLE IF NOT EXISTS users (
     email_verified_at TEXT,
     disabled_at TEXT,
     last_login_at TEXT,
-    INTEGER NOT NULL DEFAULT 0,
+    mfa_enabled INTEGER NOT NULL DEFAULT 0,
     mfa_secret_encrypted TEXT,
-    password_changed_at TEXT
+    password_changed_at TEXT,
+    current_organization_id INTEGER,
+    FOREIGN KEY(current_organization_id) REFERENCES organizations(id)
 );
 
 CREATE TABLE IF NOT EXISTS email_verification_tokens (
@@ -69,13 +81,6 @@ CREATE TABLE IF NOT EXISTS oauth_accounts (
   updated_at TEXT NOT NULL,
   UNIQUE(provider, provider_user_id),
   FOREIGN KEY(user_id) REFERENCES users(id)
-);
--- organizations table
-CREATE TABLE IF NOT EXISTS organizations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    created_at TEXT,
-    updated_at TEXT
 );
 
 -- organization members table
@@ -386,3 +391,17 @@ CREATE TABLE IF NOT EXISTS party_payment_profiles (
     FOREIGN KEY(organization_id) REFERENCES organizations(id)
 );
 
+CREATE INDEX IF NOT EXISTS idx_users_current_org
+ON users(current_organization_id);
+
+CREATE INDEX IF NOT EXISTS idx_org_members_user
+ON organization_members(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_org_members_org
+ON organization_members(organization_id);
+
+CREATE INDEX IF NOT EXISTS idx_org_invitations_email
+ON organization_invitations(email);
+
+CREATE INDEX IF NOT EXISTS idx_org_invitations_token
+ON organization_invitations(token);

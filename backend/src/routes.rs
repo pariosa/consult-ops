@@ -7,29 +7,29 @@ use crate::handlers::{
     assign_platform_user_to_organization, attach_checkout_session, cancel_engagement,
     cancel_transaction, complete_engagement, create_activation_checkout, create_activation_fee,
     create_agreement_payout_rule, create_client, create_contract, create_engagement_billing,
-    create_engagement_milestone, create_for_project, create_invoice, create_organization_agreement,
-    create_organization_client, create_organization_member, create_organization_party,
-    create_organization_project, create_party_from_client, create_party_from_user, create_payment,
-    create_payout_rule, create_platform_organization, create_platform_user, create_project,
-    create_user, delete_organization_member, dispute_engagement, generate_for_engagement,
-    get_admin_summary, get_client_portal_summary, get_clients, get_contracts, get_invoices, get_me,
-    get_my_organization, get_organization, get_organization_clients, get_organization_contracts,
-    get_organization_finance_summary, get_organization_invoices, get_organization_members,
-    get_organization_party_balances, get_organization_payments, get_organization_projects,
-    get_party_payment_readiness, get_payments, get_project_portal_summary, get_projects,
-    get_user_by_id, get_users, invite_organization_member, list_agreement_payout_rules,
-    list_engagement_billing, list_engagement_events, list_engagement_milestones,
-    list_engagement_transactions, list_for_project, list_my_notifications,
-    list_organization_agreements, list_organization_events, list_organization_invitations,
-    list_organization_members, list_organization_parties, list_organization_transactions,
-    list_payout_rules, list_platform_organization_members, list_platform_organizations,
-    list_platform_users, lock_agreement, mark_all_notifications_read, mark_billing_paid,
-    mark_contract_sent, mark_engagement_milestone_paid, mark_notification_read,
-    mark_party_payer_authorized_dev, mark_party_payout_ready_dev, mark_signed,
-    mark_transaction_failed, mark_transaction_paid, mark_transaction_processing,
-    reopen_engagement_milestone, show, stripe_webhook, submit_engagement_milestone,
-    update_engagement_milestone, update_organization, update_organization_member, update_user_type,
-    upsert_party_payment_profile, verify_party,
+    create_engagement_milestone, create_for_project, create_invoice, create_my_organization,
+    create_organization_agreement, create_organization_client, create_organization_member,
+    create_organization_party, create_organization_project, create_party_from_client,
+    create_party_from_user, create_payment, create_payout_rule, create_platform_organization,
+    create_platform_user, create_project, create_user, delete_organization_member,
+    dispute_engagement, generate_for_engagement, get_admin_summary, get_client_portal_summary,
+    get_clients, get_contracts, get_invoices, get_me, get_my_organization, get_organization,
+    get_organization_clients, get_organization_contracts, get_organization_finance_summary,
+    get_organization_invoices, get_organization_members, get_organization_party_balances,
+    get_organization_payments, get_organization_projects, get_party_payment_readiness,
+    get_payments, get_project_portal_summary, get_projects, get_user_by_id, get_users,
+    invite_organization_member, list_agreement_payout_rules, list_engagement_billing,
+    list_engagement_events, list_engagement_milestones, list_engagement_transactions,
+    list_for_project, list_my_notifications, list_my_organizations, list_organization_agreements,
+    list_organization_events, list_organization_invitations, list_organization_members,
+    list_organization_parties, list_organization_transactions, list_payout_rules,
+    list_platform_organization_members, list_platform_organizations, list_platform_users,
+    lock_agreement, mark_all_notifications_read, mark_billing_paid, mark_contract_sent,
+    mark_engagement_milestone_paid, mark_notification_read, mark_party_payer_authorized_dev,
+    mark_party_payout_ready_dev, mark_signed, mark_transaction_failed, mark_transaction_paid,
+    mark_transaction_processing, reopen_engagement_milestone, set_current_organization, show,
+    stripe_webhook, submit_engagement_milestone, update_engagement_milestone, update_organization,
+    update_organization_member, update_user_type, upsert_party_payment_profile, verify_party,
 };
 use actix_web::web;
 pub fn config(cfg: &mut web::ServiceConfig) {
@@ -43,6 +43,23 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("/auth/logout", web::post().to(logout))
             .route("/auth/verify-email", web::post().to(verify_email))
             .route("/auth/me", web::get().to(auth_me))
+            // Logged-in context
+            .route("/me", web::get().to(get_me))
+            .route("/me/organization", web::get().to(get_my_organization))
+            .route("/me/organizations", web::get().to(list_my_organizations))
+            .route(
+                "/me/current-organization",
+                web::post().to(set_current_organization),
+            )
+            .route("/me/organizations", web::post().to(create_my_organization))
+            .route(
+                "/organizations/{id}/invitations",
+                web::post().to(invite_organization_member),
+            )
+            .route(
+                "/organization-invitations/accept",
+                web::post().to(accept_organization_invitation),
+            )
             .route(
                 "/auth/resend-verification",
                 web::post().to(resend_verification),
