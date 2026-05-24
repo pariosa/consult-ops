@@ -79,7 +79,7 @@ function submit() {
         required
       >
         <option disabled :value="0">
-          {{ loadingProjects ? 'Loading projects...' : 'Select project' }}
+          {{ loading ? 'Loading projects...' : 'Select project' }}
         </option>
 
         <option

@@ -2,7 +2,6 @@
 import { ref } from 'vue';
 import LoginForm from '~/components/LoginForm.vue';
 import { useAuth } from '~/composables/useAuth';
-import { getPortalRoute } from '~/utils/authRedirect';
 
 const error = ref('');
 const resendMessage = ref('');
@@ -43,7 +42,7 @@ const login = async (payload: {
 
   try {
     const data = await authLogin(payload);
-    await navigateTo(getPortalRoute(data.user.user_type || payload.userType));
+    await navigateTo(data.redirectTo);
   } catch (err: any) {
     error.value = err?.message || 'Unable to log in.';
 

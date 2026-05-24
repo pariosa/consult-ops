@@ -1,4 +1,6 @@
 import { computed, ref } from 'vue';
+import { useOrganizationOnboarding } from './useOrganizationOnboarding';
+import { getPortalRoute } from '~/utils/authRedirect';
 import { useApi } from './useApi';
 
 type AuthRole = 'admin' | 'consultant' | 'client';
@@ -7,8 +9,24 @@ type AuthUser = {
   id?: number;
   name?: string;
   email: string;
-  role: AuthRole;
+  user_type?: string;
+  role: AuthRole | string;
+  portal?: string;
   token: string;
+};
+
+type LoginResponse = {
+  token: string;
+  user: {
+    id?: number;
+    name?: string;
+    email: string;
+    user_type?: string;
+  };
+};
+
+type LoginResult = LoginResponse & {
+  redirectTo: string;
 };
 
 type AuthErrorCode =
@@ -35,6 +53,8 @@ const hasRestoredAuth = ref(false);
 export const useAuth = () => {
   const router = useRouter();
   const { post } = useApi();
+  const { getMyOrganizations, setCurrentOrganization } =
+    useOrganizationOnboarding();
 
   const isLoggedIn = computed(() => !!authUser.value?.token);
   const role = computed(() => authUser.value?.role || null);
@@ -78,37 +98,64 @@ export const useAuth = () => {
     if (userRole === 'client') return router.push('/client-portal');
     return router.push('/project-portal');
   }
+
   const login = async (payload: {
     email: string;
     password: string;
     remember_me?: boolean;
     userType?: string;
-  }) => {
+  }): Promise<LoginResult> => {
     try {
-      const data = await post('/api/auth/login', {
+      const data = await post<LoginResponse>('/api/auth/login', {
         email: payload.email,
         password: payload.password,
         remember_me: payload.remember_me ?? false,
       });
 
+      const userRole = data.user.user_type || payload.userType || 'consultant';
+
       const user: AuthUser = {
         ...data.user,
         token: data.token,
-        role: data.user.user_type || payload.userType || 'consultant',
+        role: userRole,
+        portal: userRole,
       };
 
       setAuth(user);
 
-      return data;
+      const orgs = await getMyOrganizations();
+
+      if (!orgs.length) {
+        return {
+          ...data,
+          redirectTo: '/onboarding',
+        };
+      }
+
+      if (orgs.length === 1) {
+        await setCurrentOrganization(orgs[0].organization_id);
+
+        return {
+          ...data,
+          redirectTo: getPortalRoute(userRole),
+        };
+      }
+
+      return {
+        ...data,
+        redirectTo: '/workspace-select',
+      };
     } catch (err: any) {
       normalizeAuthError(err);
     }
   };
+
   const resendVerification = async (email: string) => {
     return await post<{ message: string }>('/api/auth/resend-verification', {
       email,
     });
   };
+
   function normalizeAuthError(err: any): never {
     const status = err?.status || err?.response?.status || 500;
 
@@ -146,8 +193,9 @@ export const useAuth = () => {
       );
     }
 
-    throw new AuthError(message, 'UNKNOWN', status);
+    throw new AuthError(String(message), 'UNKNOWN', status);
   }
+
   return {
     resendVerification,
     login,

@@ -5,14 +5,36 @@ import { useAuth } from '~/composables/useAuth';
 import { getPortalRoute } from '~/utils/authRedirect';
 
 const error = ref('');
-const { login: authLogin } = useAuth();
+const resendMessage = ref('');
+const showResendVerification = ref(false);
+const resendLoading = ref(false);
+const lastLoginEmail = ref('');
 
+const { login: authLogin, resendVerification } = useAuth();
+
+const resend = async () => {
+  if (!lastLoginEmail.value) return;
+
+  resendLoading.value = true;
+  resendMessage.value = '';
+  error.value = '';
+
+  try {
+    await resendVerification(lastLoginEmail.value);
+    resendMessage.value =
+      'If this account exists and is unverified, a verification email has been sent.';
+  } catch (err: any) {
+    error.value = err?.message || 'Unable to resend verification email.';
+  } finally {
+    resendLoading.value = false;
+  }
+};
 const login = async (payload) => {
   error.value = '';
 
   try {
     const data = await authLogin(payload);
-    await navigateTo(getPortalRoute(data.user.user_type || payload.userType));
+    await navigateTo(data.redirectTo);
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Unable to log in.';
   }
@@ -43,6 +65,17 @@ const login = async (payload) => {
         </template>
       </LoginForm>
       <p v-if="error" class="page-error">{{ error }}</p>
+      <button
+        v-if="showResendVerification"
+        class="secondary-action"
+        type="button"
+        :disabled="resendLoading"
+        @click="resend"
+      >
+        {{ resendLoading ? 'Sending...' : 'Resend verification email' }}
+      </button>
+
+      <p v-if="resendMessage" class="page-message">{{ resendMessage }}</p>
     </div>
   </section>
 </template>

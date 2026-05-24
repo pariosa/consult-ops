@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import { useAuth } from '../composables/useAuth';
 
 const { authUser, isLoggedIn, restoreAuth, logout } = useAuth();

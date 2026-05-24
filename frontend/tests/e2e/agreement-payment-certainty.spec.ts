@@ -235,8 +235,9 @@ test('admin can create, prepare, verify, configure, and authorize payer/payee', 
 
   await page.getByRole('button', { name: /verify payee/i }).click();
   await page.getByRole('button', { name: /configure as payee/i }).click();
-  await page.getByRole('button', { name: /mark payout ready dev/i }).click();
-
+  await page
+    .getByRole('button', { name: /payout ready|mark payout ready|ready dev/i })
+    .click();
   await expect(page.getByText(/✓ Verified payer selected/i)).toBeVisible();
   await expect(page.getByText(/✓ Payer funding authorized/i)).toBeVisible();
   await expect(page.getByText(/✓ Verified payee selected/i)).toBeVisible();
