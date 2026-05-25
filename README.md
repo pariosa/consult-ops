@@ -21,17 +21,22 @@ Consult-Ops is a self-hosted consultant management platform:
    npm install -g concurrently
     concurrently "cd backend && cargo run" "cd frontend && npm run dev"
 
-
-
-
    ```
 
-   # Manual reset command
+2. setup database
 
-   From repo root:
+   docker compose up -d postgres
 
-   ```bash
-   rm -f backend/app.db backend/db/*.db
-   cd backend
-   cargo run
-   ```
+   docker exec -i consult_ops_postgres psql -U consult_ops -d consult_ops < backend/db/schema.postgres.sql
+
+if this happens in the test environment:
+database "consult_ops_test" does not exist
+
+make sure to run these docker commands :
+
+docker exec -it consult_ops_postgres createdb -U consult_ops consult_ops_test
+
+docker exec -i consult_ops_postgres psql \
+ -U consult_ops \
+ -d consult_ops_test \
+ < backend/db/schema.postgres.sql

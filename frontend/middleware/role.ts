@@ -4,16 +4,23 @@ import { defineNuxtRouteMiddleware, navigateTo } from 'nuxt/app';
 export default defineNuxtRouteMiddleware((to) => {
   if (process.server) return;
 
-  const raw = localStorage.getItem('auth_user');
+  const allowedRoles = to.meta.roles as string[] | undefined;
+  if (!allowedRoles?.length) return;
 
-  if (!raw) {
-    return navigateTo('/consultant-login');
+  const raw = localStorage.getItem('auth_user');
+  const user = raw ? JSON.parse(raw) : null;
+
+  if (!user) {
+    return navigateTo('/admin-login');
   }
 
-  const user = JSON.parse(raw);
-  const allowedUserTypes = to.meta.allowedUserTypes as string[] | undefined;
+  const userType = user.user_type || user.role || user.portal;
 
-  if (allowedUserTypes && !allowedUserTypes.includes(user.user_type)) {
+  if (userType === 'super_admin') {
+    return;
+  }
+
+  if (!allowedRoles.includes(userType)) {
     return navigateTo('/unauthorized');
   }
 });

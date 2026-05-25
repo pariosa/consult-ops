@@ -1,15 +1,21 @@
-version: "3.9"
 services:
-  backend:
-    build: ./backend
-    ports:
-      - "8000:8000"
+  postgres:
+    image: postgres:16
+    container_name: consult_ops_postgres
+    restart: unless-stopped
     environment:
-      - DEMO_MODE=true
+      POSTGRES_DB: consult_ops
+      POSTGRES_USER: consult_ops
+      POSTGRES_PASSWORD: consult_ops_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - consult_ops_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U consult_ops -d consult_ops"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
-  # frontend:
-  #   build: ./frontend
-  #   ports:
-  #     - "3000:3000"
-  #   depends_on:
-  #     - backend
+volumes:
+  consult_ops_pg_data:

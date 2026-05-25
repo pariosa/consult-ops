@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { usePlatformAdmin } from '~/composables/usePlatformAdmin';
+import { usePermissions } from '~/composables/usePermissions';
 
 const {
   getOrganizations,
@@ -10,31 +11,23 @@ const {
   assignUserToOrganization,
 } = usePlatformAdmin();
 import { useAuth } from '~/composables/useAuth';
+import role from '~/middleware/role';
 
 const { authUser } = useAuth();
 
 const isSuperAdmin = computed(() => {
-  const user = authUser.value;
-
-  if (user?.user_type === 'super_admin') return true;
-  if (user?.role === 'super_admin') return true;
-  if (user?.portal === 'platform') return true;
-
   if (!process.client) return false;
 
-  const raw = localStorage.getItem('auth_user');
+  const raw = localStorage.getItem('auth:user');
   const localUser = raw ? JSON.parse(raw) : null;
-  console.log(localUser.user_type);
+
   return (
+    role.value === 'super_admin' ||
+    role.value === 'platform' ||
     localUser?.user_type === 'super_admin' ||
     localUser?.role === 'super_admin' ||
     localUser?.portal === 'platform'
   );
-});
-
-definePageMeta({
-  middleware: ['role'],
-  roles: ['super_admin'],
 });
 
 onMounted(() => {
@@ -248,6 +241,7 @@ onMounted(refresh);
         <h2>Assign User To Organization</h2>
 
         <div class="form-grid">
+          v
           <label for="platform-assignment-organization">Organization</label>
           <select
             id="platform-assignment-organization"
