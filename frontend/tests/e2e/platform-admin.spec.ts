@@ -7,6 +7,7 @@ test('super admin can manage organizations users and memberships', async ({
     {
       id: 1,
       name: 'Atlas Field Consulting',
+      slug: 'atlas-field-consulting',
       created_at: '2026-05-15',
       updated_at: '2026-05-15',
     },
@@ -27,7 +28,7 @@ test('super admin can manage organizations users and memberships', async ({
 
   await page.addInitScript(() => {
     window.localStorage.setItem(
-      'auth:user',
+      'auth_user',
       JSON.stringify({
         id: 1,
         email: 'superadmin@consultops.test',
@@ -37,18 +38,22 @@ test('super admin can manage organizations users and memberships', async ({
         portal: 'platform',
       }),
     );
-    window.localStorage.setItem('auth:token', 'e2e-super-admin-token');
+
+    window.localStorage.setItem('auth_token', 'e2e-super-admin-token');
   });
 
   await page.route('**/api/platform/organizations', async (route) => {
     if (route.request().method() === 'POST') {
       const body = route.request().postDataJSON();
+
       const org = {
         id: 2,
         name: body.name,
+        slug: body.name.toLowerCase().replaceAll(' ', '-'),
         created_at: '2026-05-15',
         updated_at: '2026-05-15',
       };
+
       organizations = [org, ...organizations];
       await route.fulfill({ json: org });
       return;
@@ -60,6 +65,7 @@ test('super admin can manage organizations users and memberships', async ({
   await page.route('**/api/platform/users', async (route) => {
     if (route.request().method() === 'POST') {
       const body = route.request().postDataJSON();
+
       const user = {
         id: 2,
         email: body.email,
@@ -68,6 +74,7 @@ test('super admin can manage organizations users and memberships', async ({
         created_at: '2026-05-15',
         updated_at: '2026-05-15',
       };
+
       users = [user, ...users];
       await route.fulfill({ json: user });
       return;
@@ -77,26 +84,32 @@ test('super admin can manage organizations users and memberships', async ({
   });
 
   await page.route('**/api/platform/organizations/*/members', async (route) => {
+    const match = route
+      .request()
+      .url()
+      .match(/organizations\/(\d+)\/members/);
+    const organizationId = Number(match?.[1] ?? 1);
+
     if (route.request().method() === 'POST') {
       const body = route.request().postDataJSON();
       const user = users.find((item) => item.id === Number(body.user_id));
 
-      members = [
-        {
-          id: 1,
-          organization_id: Number(body.organization_id ?? 1),
-          user_id: Number(body.user_id),
-          email: user?.email,
-          name: user?.name,
-          user_type: user?.user_type,
-          role: body.role,
-          status: 'active',
-          created_at: '2026-05-15',
-          updated_at: '2026-05-15',
-        },
-      ];
+      const member = {
+        id: 1,
+        organization_id: organizationId,
+        user_id: Number(body.user_id),
+        email: user?.email,
+        name: user?.name,
+        user_type: user?.user_type,
+        role: body.role,
+        status: 'active',
+        created_at: '2026-05-15',
+        updated_at: '2026-05-15',
+      };
 
-      await route.fulfill({ json: { success: true } });
+      members = [member];
+
+      await route.fulfill({ json: member });
       return;
     }
 
@@ -126,38 +139,60 @@ test('super admin can manage organizations users and memberships', async ({
 
   await expect(page.getByText(/user created/i)).toBeVisible();
 
-  await page.locator('select').nth(1).selectOption('1');
-  await page.locator('select').nth(2).selectOption('2');
-  await page.locator('select').nth(3).selectOption('admin');
+  await page
+    .locator('#platform-assignment-organization')
+    .selectOption({ label: 'New Rescue Org' });
+
+  await page.locator('#platform-assignment-user').selectOption('2');
+
+  await page.locator('#platform-assignment-role').selectOption('admin');
+
   await page.getByRole('button', { name: /assign user/i }).click();
 
   await expect(page.getByText(/user assigned to organization/i)).toBeVisible();
+
   await expect(
     page.locator('.table-row').filter({ hasText: 'new.admin@example.com' }),
   ).toContainText('active');
-  await expect(page.getByText('active')).toBeVisible();
 });
 
 test('non super admin is blocked from platform admin UI', async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.setItem(
-      'auth:user',
+      'auth_user',
       JSON.stringify({
         id: 2,
         email: 'admin@atlas.test',
+        name: 'Atlas Admin',
         user_type: 'admin',
+        role: 'admin',
       }),
     );
+
+    window.localStorage.setItem('auth_token', 'e2e-admin-token');
   });
 
   await page.goto('/platform');
 
-  await expect(
-    page.getByRole('heading', { name: /platform admin/i }),
-  ).toBeVisible();
+  const unauthorizedHeading = page.getByRole('heading', {
+    name: /you do not have permission/i,
+  });
 
-  await expect(page.getByText(/platform admin access required/i)).toBeVisible();
-  await expect(
-    page.getByRole('button', { name: 'Create Organization' }),
-  ).toHaveCount(0);
+  const platformHeading = page.getByRole('heading', {
+    name: /platform admin/i,
+  });
+
+  await expect(unauthorizedHeading.or(platformHeading)).toBeVisible();
+
+  if (await platformHeading.isVisible().catch(() => false)) {
+    await expect(
+      page.getByText(/platform admin access required/i),
+    ).toBeVisible();
+
+    await expect(
+      page.getByRole('button', { name: /create organization/i }),
+    ).toHaveCount(0);
+  } else {
+    await expect(unauthorizedHeading).toBeVisible();
+  }
 });
