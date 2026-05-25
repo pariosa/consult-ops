@@ -1,5 +1,5 @@
 // src/services/operations_kernel_service.rs
-use sqlx::SqlitePool;
+use sqlx::PgPool;
 
 use crate::domain::engagement_state::{EngagementEvent, EngagementStatus};
 use crate::services::event_service::EventService;
@@ -8,7 +8,7 @@ pub struct OperationsKernelService;
 
 impl OperationsKernelService {
     pub async fn apply_engagement_event(
-        pool: &SqlitePool,
+        pool: &PgPool,
         organization_id: i64,
         engagement_id: i64,
         actor_user_id: Option<i64>,

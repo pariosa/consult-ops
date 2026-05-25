@@ -1,5 +1,6 @@
 // src/handlers/mod.rs
 
+pub mod admin_user;
 pub mod agreement_payout_rule;
 mod client;
 mod contract;
@@ -77,9 +78,15 @@ pub use party::{
 };
 pub use stripe_webhook::stripe_webhook;
 
+pub use admin_user::{
+    disable_user, enable_user, force_password_reset, get_user_memberships, revoke_user_sessions,
+};
+pub use operational_finance::{get_organization_finance_summary, get_organization_party_balances};
 pub use operational_transaction::{
     cancel_transaction, list_engagement_transactions, list_organization_transactions,
     mark_transaction_failed, mark_transaction_paid, mark_transaction_processing,
 };
-
-pub use operational_finance::{get_organization_finance_summary, get_organization_party_balances};
+pub use subscription::{
+    cancel_subscription_dev, get_organization_subscription, mark_subscription_active_dev,
+    upsert_organization_subscription,
+};

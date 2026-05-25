@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, Result as SqlxResult, SqlitePool};
+use sqlx::{FromRow, PgPool, Result as SqlxResult};
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct EngagementBilling {
@@ -29,30 +29,28 @@ pub struct UpdateCheckoutSessionRequest {
 }
 
 impl EngagementBilling {
-    pub async fn find_activation_fee(
-        db: &SqlitePool,
-        engagement_id: i64,
-    ) -> SqlxResult<Option<Self>> {
+    pub async fn find_activation_fee(db: &PgPool, engagement_id: i64) -> SqlxResult<Option<Self>> {
         sqlx::query_as::<_, EngagementBilling>(
             r#"
-        SELECT *
-        FROM engagement_billing
-        WHERE engagement_id = ?
-          AND billing_type = 'activation_fee'
-        ORDER BY created_at DESC
-        LIMIT 1
-        "#,
+            SELECT *
+            FROM engagement_billing
+            WHERE engagement_id = $1
+              AND billing_type = 'activation_fee'
+            ORDER BY created_at DESC
+            LIMIT 1
+            "#,
         )
         .bind(engagement_id)
         .fetch_optional(db)
         .await
     }
-    pub async fn for_engagement(db: &SqlitePool, engagement_id: i64) -> SqlxResult<Vec<Self>> {
+
+    pub async fn for_engagement(db: &PgPool, engagement_id: i64) -> SqlxResult<Vec<Self>> {
         sqlx::query_as::<_, EngagementBilling>(
             r#"
             SELECT *
             FROM engagement_billing
-            WHERE engagement_id = ?
+            WHERE engagement_id = $1
             ORDER BY created_at DESC
             "#,
         )
@@ -62,7 +60,7 @@ impl EngagementBilling {
     }
 
     pub async fn create(
-        db: &SqlitePool,
+        db: &PgPool,
         engagement_id: i64,
         organization_id: i64,
         billing_type: String,
@@ -80,7 +78,11 @@ impl EngagementBilling {
                 status,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, 'pending', datetime('now'))
+            VALUES (
+                $1, $2, $3, $4, $5,
+                'pending',
+                CURRENT_TIMESTAMP
+            )
             RETURNING *
             "#,
         )
@@ -94,7 +96,7 @@ impl EngagementBilling {
     }
 
     pub async fn create_activation_fee(
-        db: &SqlitePool,
+        db: &PgPool,
         engagement_id: i64,
         organization_id: i64,
     ) -> SqlxResult<Self> {
@@ -110,15 +112,15 @@ impl EngagementBilling {
     }
 
     pub async fn attach_checkout_session(
-        db: &SqlitePool,
+        db: &PgPool,
         billing_id: i64,
         stripe_checkout_session_id: &str,
     ) -> SqlxResult<Self> {
         sqlx::query_as::<_, EngagementBilling>(
             r#"
             UPDATE engagement_billing
-            SET stripe_checkout_session_id = ?
-            WHERE id = ?
+            SET stripe_checkout_session_id = $1
+            WHERE id = $2
             RETURNING *
             "#,
         )
@@ -128,13 +130,13 @@ impl EngagementBilling {
         .await
     }
 
-    pub async fn mark_paid(db: &SqlitePool, billing_id: i64) -> SqlxResult<Self> {
+    pub async fn mark_paid(db: &PgPool, billing_id: i64) -> SqlxResult<Self> {
         sqlx::query_as::<_, EngagementBilling>(
             r#"
             UPDATE engagement_billing
             SET status = 'paid',
-                paid_at = datetime('now')
-            WHERE id = ?
+                paid_at = CURRENT_TIMESTAMP
+            WHERE id = $1
             RETURNING *
             "#,
         )
@@ -143,16 +145,13 @@ impl EngagementBilling {
         .await
     }
 
-    pub async fn mark_paid_by_session(
-        db: &SqlitePool,
-        checkout_session_id: &str,
-    ) -> SqlxResult<Self> {
+    pub async fn mark_paid_by_session(db: &PgPool, checkout_session_id: &str) -> SqlxResult<Self> {
         sqlx::query_as::<_, EngagementBilling>(
             r#"
             UPDATE engagement_billing
             SET status = 'paid',
-                paid_at = datetime('now')
-            WHERE stripe_checkout_session_id = ?
+                paid_at = CURRENT_TIMESTAMP
+            WHERE stripe_checkout_session_id = $1
             RETURNING *
             "#,
         )

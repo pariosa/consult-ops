@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, Result as SqlxResult, SqlitePool};
+use sqlx::{FromRow, PgPool, Result as SqlxResult};
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct OrganizationInvitation {
@@ -25,7 +25,7 @@ pub struct CreateOrganizationInvitation {
 
 impl OrganizationInvitation {
     pub async fn create(
-        db: &SqlitePool,
+        db: &PgPool,
         organization_id: i64,
         email: String,
         role: String,
@@ -39,8 +39,8 @@ impl OrganizationInvitation {
             r#"
             SELECT *
             FROM organization_invitations
-            WHERE organization_id = ?
-              AND lower(email) = ?
+            WHERE organization_id = $1
+              AND lower(email) = $2
               AND status = 'pending'
             LIMIT 1
             "#,
@@ -66,7 +66,17 @@ impl OrganizationInvitation {
                 created_at,
                 updated_at
             )
-            VALUES (?, ?, ?, ?, 'pending', ?, ?, datetime('now'), datetime('now'))
+            VALUES (
+                $1,
+                $2,
+                $3,
+                $4,
+                'pending',
+                $5,
+                $6,
+                CURRENT_TIMESTAMP,
+                CURRENT_TIMESTAMP
+            )
             RETURNING *
             "#,
         )
@@ -80,15 +90,12 @@ impl OrganizationInvitation {
         .await
     }
 
-    pub async fn list_for_organization(
-        db: &SqlitePool,
-        organization_id: i64,
-    ) -> SqlxResult<Vec<Self>> {
+    pub async fn list_for_organization(db: &PgPool, organization_id: i64) -> SqlxResult<Vec<Self>> {
         sqlx::query_as::<_, OrganizationInvitation>(
             r#"
             SELECT *
             FROM organization_invitations
-            WHERE organization_id = ?
+            WHERE organization_id = $1
             ORDER BY created_at DESC
             "#,
         )
@@ -97,12 +104,35 @@ impl OrganizationInvitation {
         .await
     }
 
-    pub async fn find_pending_by_token(db: &SqlitePool, token: &str) -> SqlxResult<Self> {
+    pub async fn list_for_organization_for_user(
+        db: &PgPool,
+        organization_id: i64,
+        user_id: i64,
+    ) -> SqlxResult<Vec<Self>> {
+        sqlx::query_as::<_, OrganizationInvitation>(
+            r#"
+            SELECT oi.*
+            FROM organization_invitations oi
+            JOIN organization_members om
+              ON om.organization_id = oi.organization_id
+            WHERE oi.organization_id = $1
+              AND om.user_id = $2
+              AND om.status = 'active'
+            ORDER BY oi.created_at DESC
+            "#,
+        )
+        .bind(organization_id)
+        .bind(user_id)
+        .fetch_all(db)
+        .await
+    }
+
+    pub async fn find_pending_by_token(db: &PgPool, token: &str) -> SqlxResult<Self> {
         sqlx::query_as::<_, OrganizationInvitation>(
             r#"
             SELECT *
             FROM organization_invitations
-            WHERE token = ?
+            WHERE token = $1
               AND status = 'pending'
             "#,
         )
@@ -111,23 +141,69 @@ impl OrganizationInvitation {
         .await
     }
 
-    pub async fn mark_accepted(
-        db: &SqlitePool,
-        invitation_id: i64,
-        user_id: i64,
-    ) -> SqlxResult<Self> {
+    pub async fn find_pending_by_email(db: &PgPool, email: &str) -> SqlxResult<Vec<Self>> {
+        let normalized_email = email.trim().to_lowercase();
+
+        sqlx::query_as::<_, OrganizationInvitation>(
+            r#"
+            SELECT *
+            FROM organization_invitations
+            WHERE lower(email) = $1
+              AND status = 'pending'
+            ORDER BY created_at DESC
+            "#,
+        )
+        .bind(normalized_email)
+        .fetch_all(db)
+        .await
+    }
+
+    pub async fn mark_accepted(db: &PgPool, invitation_id: i64, user_id: i64) -> SqlxResult<Self> {
         sqlx::query_as::<_, OrganizationInvitation>(
             r#"
             UPDATE organization_invitations
-            SET status = 'accepted',
-                accepted_by_user_id = ?,
-                accepted_at = datetime('now'),
-                updated_at = datetime('now')
-            WHERE id = ?
+            SET
+                status = 'accepted',
+                accepted_by_user_id = $1,
+                accepted_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $2
             RETURNING *
             "#,
         )
         .bind(user_id)
+        .bind(invitation_id)
+        .fetch_one(db)
+        .await
+    }
+
+    pub async fn mark_expired(db: &PgPool, invitation_id: i64) -> SqlxResult<Self> {
+        sqlx::query_as::<_, OrganizationInvitation>(
+            r#"
+            UPDATE organization_invitations
+            SET
+                status = 'expired',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1
+            RETURNING *
+            "#,
+        )
+        .bind(invitation_id)
+        .fetch_one(db)
+        .await
+    }
+
+    pub async fn revoke(db: &PgPool, invitation_id: i64) -> SqlxResult<Self> {
+        sqlx::query_as::<_, OrganizationInvitation>(
+            r#"
+            UPDATE organization_invitations
+            SET
+                status = 'revoked',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1
+            RETURNING *
+            "#,
+        )
         .bind(invitation_id)
         .fetch_one(db)
         .await

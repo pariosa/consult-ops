@@ -21,14 +21,24 @@ pub struct NotificationResponse {
 pub async fn list_my_notifications(db: web::Data<Db>, auth: AuthUser) -> impl Responder {
     let result = sqlx::query_as::<_, NotificationResponse>(
         r#"
-    SELECT id, organization_id, user_id, recipient_email, notification_type,
-           title, body, entity_type, entity_id, read_at, created_at
-    FROM notifications
-    WHERE user_id = ?
-       OR recipient_email = ?
-    ORDER BY created_at DESC
-    LIMIT 50
-    "#,
+        SELECT
+            id,
+            organization_id,
+            user_id,
+            recipient_email,
+            notification_type,
+            title,
+            body,
+            entity_type,
+            entity_id,
+            read_at,
+            created_at
+        FROM notifications
+        WHERE user_id = $1
+           OR lower(recipient_email) = lower($2)
+        ORDER BY created_at DESC
+        LIMIT 50
+        "#,
     )
     .bind(auth.id)
     .bind(&auth.email)
@@ -48,42 +58,59 @@ pub async fn mark_notification_read(
 ) -> impl Responder {
     let notification_id = path.into_inner();
 
-    let result = sqlx::query!(
+    let result = sqlx::query(
         r#"
         UPDATE notifications
-        SET read_at = datetime('now')
-        WHERE id = ?
-          AND (user_id = ? OR recipient_email = ?)
+        SET read_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+          AND (
+            user_id = $2
+            OR lower(recipient_email) = lower($3)
+          )
         "#,
-        notification_id,
-        auth.id,
-        auth.email
     )
+    .bind(notification_id)
+    .bind(auth.id)
+    .bind(&auth.email)
     .execute(db.pool.as_ref())
     .await;
 
     match result {
-        Ok(_) => HttpResponse::Ok().json(serde_json::json!({ "success": true })),
+        Ok(result) => {
+            if result.rows_affected() == 0 {
+                return HttpResponse::NotFound().json(serde_json::json!({
+                    "error": "Notification not found"
+                }));
+            }
+
+            HttpResponse::Ok().json(serde_json::json!({ "success": true }))
+        }
         Err(err) => HttpResponse::InternalServerError().body(err.to_string()),
     }
 }
 
 pub async fn mark_all_notifications_read(db: web::Data<Db>, auth: AuthUser) -> impl Responder {
-    let result = sqlx::query!(
+    let result = sqlx::query(
         r#"
         UPDATE notifications
-        SET read_at = datetime('now')
+        SET read_at = CURRENT_TIMESTAMP
         WHERE read_at IS NULL
-          AND (user_id = ? OR recipient_email = ?)
+          AND (
+            user_id = $1
+            OR lower(recipient_email) = lower($2)
+          )
         "#,
-        auth.id,
-        auth.email
     )
+    .bind(auth.id)
+    .bind(&auth.email)
     .execute(db.pool.as_ref())
     .await;
 
     match result {
-        Ok(_) => HttpResponse::Ok().json(serde_json::json!({ "success": true })),
+        Ok(result) => HttpResponse::Ok().json(serde_json::json!({
+            "success": true,
+            "updated_count": result.rows_affected()
+        })),
         Err(err) => HttpResponse::InternalServerError().body(err.to_string()),
     }
 }

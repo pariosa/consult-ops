@@ -1,13 +1,16 @@
-use sqlx::SqlitePool;
+use sqlx::{PgPool, Row};
 
-use crate::models::operational_transaction::OperationalTransaction;
+use crate::models::operational_transaction::{
+    CreateOperationalTransaction, OperationalTransaction,
+};
 use crate::services::event_service::EventService;
 
 pub struct TransactionWorkflowService;
 
 impl TransactionWorkflowService {
+    #[allow(clippy::too_many_arguments)]
     pub async fn generate_transactions_for_trigger(
-        pool: &SqlitePool,
+        pool: &PgPool,
         organization_id: i64,
         agreement_id: i64,
         engagement_id: Option<i64>,
@@ -15,7 +18,7 @@ impl TransactionWorkflowService {
         trigger_event: &str,
         base_amount_cents: i64,
     ) -> Result<Vec<OperationalTransaction>, String> {
-        let rules = sqlx::query!(
+        let rules = sqlx::query(
             r#"
             SELECT
                 id,
@@ -29,9 +32,9 @@ impl TransactionWorkflowService {
             WHERE agreement_id = $1
               AND trigger_event = $2
             "#,
-            agreement_id,
-            trigger_event
         )
+        .bind(agreement_id)
+        .bind(trigger_event)
         .fetch_all(pool)
         .await
         .map_err(|err| err.to_string())?;
@@ -39,68 +42,73 @@ impl TransactionWorkflowService {
         let mut created = Vec::new();
 
         for rule in rules {
-            let amount_cents = if let Some(percent) = rule.percent {
+            let rule_id: i64 = rule.try_get("id").map_err(|err| err.to_string())?;
+            let from_party_id: i64 = rule
+                .try_get("from_party_id")
+                .map_err(|err| err.to_string())?;
+            let to_party_id: i64 = rule.try_get("to_party_id").map_err(|err| err.to_string())?;
+            let rule_type: String = rule.try_get("rule_type").map_err(|err| err.to_string())?;
+            let percent: Option<i64> = rule.try_get("percent").map_err(|err| err.to_string())?;
+            let fixed_amount_cents: Option<i64> = rule
+                .try_get("amount_cents")
+                .map_err(|err| err.to_string())?;
+
+            let amount_cents = if let Some(percent) = percent {
                 base_amount_cents * percent / 100
             } else {
-                rule.amount_cents.unwrap_or(0)
+                fixed_amount_cents.unwrap_or(0)
             };
 
             if amount_cents <= 0 {
                 continue;
             }
-            let agreement_id_opt = Some(agreement_id);
-            let trigger_event_string = trigger_event.to_string();
-            let trigger_event_opt = Some(trigger_event_string.clone());
-            let duplicate_count: i32 = sqlx::query_scalar!(
+
+            let duplicate_count: i64 = sqlx::query_scalar(
                 r#"
-    SELECT COUNT(*) as "count!"
-    FROM operational_transactions
-    WHERE agreement_id = $1
-      AND engagement_id = $2
-      AND milestone_id = $3
-      AND from_party_id = $4
-      AND to_party_id = $5
-      AND transaction_type = $6
-      AND trigger_event = $7
-    "#,
-                agreement_id_opt,
-                engagement_id,
-                milestone_id,
-                rule.from_party_id,
-                rule.to_party_id,
-                rule.rule_type,
-                trigger_event_opt
+                SELECT COUNT(*)::BIGINT
+                FROM operational_transactions
+                WHERE agreement_id = $1
+                  AND engagement_id IS NOT DISTINCT FROM $2
+                  AND milestone_id IS NOT DISTINCT FROM $3
+                  AND from_party_id = $4
+                  AND to_party_id = $5
+                  AND transaction_type = $6
+                  AND trigger_event = $7
+                "#,
             )
+            .bind(agreement_id)
+            .bind(engagement_id)
+            .bind(milestone_id)
+            .bind(from_party_id)
+            .bind(to_party_id)
+            .bind(&rule_type)
+            .bind(trigger_event)
             .fetch_one(pool)
             .await
             .map_err(|err| err.to_string())?;
+
             if duplicate_count > 0 {
                 continue;
             }
+
             let transaction = OperationalTransaction::create(
                 pool,
-                organization_id,
-                Some(agreement_id),
-                engagement_id,
-                milestone_id,
-                rule.from_party_id,
-                rule.to_party_id,
-                rule.rule_type.clone(),
-                amount_cents,
-                "usd".to_string(),
-                Some(trigger_event.to_string()),
+                CreateOperationalTransaction {
+                    organization_id,
+                    agreement_id: Some(agreement_id),
+                    engagement_id,
+                    milestone_id,
+                    from_party_id,
+                    to_party_id,
+                    transaction_type: rule_type.clone(),
+                    amount_cents,
+                    currency: Some("usd".to_string()),
+                    trigger_event: Some(trigger_event.to_string()),
+                },
             )
             .await
             .map_err(|err| err.to_string())?;
-            println!(
-                "Generating transactions: org={} agreement={} engagement={:?} milestone={:?} trigger={} base_amount={}",
-                organization_id,
-                agreement_id,
-                engagement_id,
-                milestone_id,
-                trigger_event,
-                base_amount_cents
-            );
+
             let _ = EventService::record_event(
                 pool,
                 organization_id,
@@ -122,15 +130,7 @@ impl TransactionWorkflowService {
                 }),
             )
             .await;
-            println!(
-                "Rule {} type={} from={} to={} percent={:?} amount={:?}",
-                rule.id,
-                rule.rule_type,
-                rule.from_party_id,
-                rule.to_party_id,
-                rule.percent,
-                rule.amount_cents
-            );
+
             if let Some(engagement_id) = engagement_id {
                 let _ = EventService::record_event(
                     pool,
@@ -154,6 +154,16 @@ impl TransactionWorkflowService {
                 )
                 .await;
             }
+
+            tracing::debug!(
+                "Generated transaction from rule {} type={} from={} to={} percent={:?} amount={:?}",
+                rule_id,
+                rule_type,
+                from_party_id,
+                to_party_id,
+                percent,
+                fixed_amount_cents
+            );
 
             created.push(transaction);
         }

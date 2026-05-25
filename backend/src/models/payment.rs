@@ -2,7 +2,7 @@ use crate::db::Db;
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Result as SqlxResult};
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct CreatePayment {
     pub organization_id: i64,
     pub invoice_id: i64,
@@ -31,27 +31,80 @@ pub struct Payment {
 impl Payment {
     pub fn new(create: CreatePayment) -> Self {
         let now = chrono::Utc::now().to_rfc3339();
+
         Payment {
             id: 0,
             organization_id: create.organization_id,
             invoice_id: create.invoice_id,
             amount: create.amount,
             paid_at: create.paid_at.or(Some(now.clone())),
-            currency: create.currency,
+            currency: create.currency.or(Some("usd".to_string())),
             method: create.method,
             reference: create.reference,
             notes: create.notes,
             created_at: now,
         }
     }
+
     pub async fn all(db: &Db) -> SqlxResult<Vec<Self>> {
-        sqlx::query_as::<_, Payment>("SELECT * FROM payments ORDER BY created_at DESC")
-            .fetch_all(&*db.pool)
-            .await
+        sqlx::query_as::<_, Payment>(
+            r#"
+            SELECT *
+            FROM payments
+            ORDER BY created_at DESC
+            "#,
+        )
+        .fetch_all(&*db.pool)
+        .await
+    }
+
+    pub async fn find(db: &Db, id: i64) -> SqlxResult<Option<Self>> {
+        sqlx::query_as::<_, Payment>(
+            r#"
+            SELECT *
+            FROM payments
+            WHERE id = $1
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(&*db.pool)
+        .await
+    }
+
+    pub async fn find_for_user(db: &Db, payment_id: i64, user_id: i64) -> SqlxResult<Option<Self>> {
+        sqlx::query_as::<_, Payment>(
+            r#"
+            SELECT p.*
+            FROM payments p
+            JOIN organization_members om
+              ON om.organization_id = p.organization_id
+            WHERE p.id = $1
+              AND om.user_id = $2
+              AND om.status = 'active'
+            "#,
+        )
+        .bind(payment_id)
+        .bind(user_id)
+        .fetch_optional(&*db.pool)
+        .await
+    }
+
+    pub async fn for_organization(db: &Db, organization_id: i64) -> SqlxResult<Vec<Self>> {
+        sqlx::query_as::<_, Payment>(
+            r#"
+            SELECT *
+            FROM payments
+            WHERE organization_id = $1
+            ORDER BY created_at DESC
+            "#,
+        )
+        .bind(organization_id)
+        .fetch_all(&*db.pool)
+        .await
     }
 
     pub async fn create(db: &Db, payment: Payment) -> SqlxResult<Self> {
-        let rec = sqlx::query(
+        sqlx::query_as::<_, Payment>(
             r#"
             INSERT INTO payments (
                 organization_id,
@@ -63,7 +116,11 @@ impl Payment {
                 reference,
                 notes,
                 created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            )
+            VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9
+            )
+            RETURNING *
             "#,
         )
         .bind(payment.organization_id)
@@ -75,12 +132,21 @@ impl Payment {
         .bind(&payment.reference)
         .bind(&payment.notes)
         .bind(&payment.created_at)
-        .execute(&*db.pool)
-        .await?;
+        .fetch_one(&*db.pool)
+        .await
+    }
 
-        Ok(Payment {
-            id: rec.last_insert_rowid(),
-            ..payment
-        })
+    pub async fn for_invoice(db: &Db, invoice_id: i64) -> SqlxResult<Vec<Self>> {
+        sqlx::query_as::<_, Payment>(
+            r#"
+            SELECT *
+            FROM payments
+            WHERE invoice_id = $1
+            ORDER BY created_at DESC
+            "#,
+        )
+        .bind(invoice_id)
+        .fetch_all(&*db.pool)
+        .await
     }
 }

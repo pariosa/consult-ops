@@ -1,4 +1,5 @@
 [env]
 SQLX_OFFLINE = "false"
-DATABASE_URL = "sqlite://./db/consult_ops.db?mode=rwc"
+DATABASE_URL = "postgres://consult_ops:consult_ops_dev_password@localhost:5432/consult_ops"
+
 JWT_SECRET = { value = "test-jwt-secret-that-is-long-enough", force = true }

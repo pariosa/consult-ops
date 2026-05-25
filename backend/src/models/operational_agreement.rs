@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, Result as SqlxResult, SqlitePool};
+use sqlx::{FromRow, PgPool, Result as SqlxResult};
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct OperationalAgreement {
@@ -21,7 +21,7 @@ pub struct CreateOperationalAgreement {
 
 impl OperationalAgreement {
     pub async fn create(
-        db: &SqlitePool,
+        db: &PgPool,
         organization_id: i64,
         payload: CreateOperationalAgreement,
     ) -> SqlxResult<Self> {
@@ -35,7 +35,7 @@ impl OperationalAgreement {
                 status,
                 created_at
             )
-            VALUES (?, ?, ?, ?, 'draft', datetime('now'))
+            VALUES ($1, $2, $3, $4, 'draft', CURRENT_TIMESTAMP)
             RETURNING *
             "#,
         )
@@ -47,12 +47,12 @@ impl OperationalAgreement {
         .await
     }
 
-    pub async fn for_organization(db: &SqlitePool, organization_id: i64) -> SqlxResult<Vec<Self>> {
+    pub async fn for_organization(db: &PgPool, organization_id: i64) -> SqlxResult<Vec<Self>> {
         sqlx::query_as::<_, OperationalAgreement>(
             r#"
             SELECT *
             FROM operational_agreements
-            WHERE organization_id = ?
+            WHERE organization_id = $1
             ORDER BY created_at DESC
             "#,
         )
@@ -62,14 +62,14 @@ impl OperationalAgreement {
     }
 
     pub async fn latest_for_engagement(
-        db: &SqlitePool,
+        db: &PgPool,
         engagement_id: i64,
     ) -> SqlxResult<Option<Self>> {
         sqlx::query_as::<_, OperationalAgreement>(
             r#"
             SELECT *
             FROM operational_agreements
-            WHERE engagement_id = ?
+            WHERE engagement_id = $1
             ORDER BY created_at DESC
             LIMIT 1
             "#,
@@ -78,25 +78,114 @@ impl OperationalAgreement {
         .fetch_optional(db)
         .await
     }
-    pub async fn lock(db: &SqlitePool, id: i64) -> SqlxResult<Self> {
+
+    pub async fn lock(db: &PgPool, id: i64) -> SqlxResult<Self> {
         sqlx::query_as::<_, OperationalAgreement>(
             r#"
-        UPDATE operational_agreements
-        SET status = 'locked'
-        WHERE id = ?
-        RETURNING *
-        "#,
+            UPDATE operational_agreements
+            SET status = 'locked'
+            WHERE id = $1
+            RETURNING *
+            "#,
         )
         .bind(id)
         .fetch_one(db)
         .await
     }
 
-    pub async fn find(db: &SqlitePool, id: i64) -> SqlxResult<Self> {
+    pub async fn find(db: &PgPool, id: i64) -> SqlxResult<Self> {
         sqlx::query_as::<_, OperationalAgreement>(
-            "SELECT * FROM operational_agreements WHERE id = ?",
+            r#"
+            SELECT *
+            FROM operational_agreements
+            WHERE id = $1
+            "#,
         )
         .bind(id)
+        .fetch_one(db)
+        .await
+    }
+    pub async fn find_for_user(db: &PgPool, id: i64, user_id: i64) -> SqlxResult<Self> {
+        sqlx::query_as::<_, OperationalAgreement>(
+            r#"
+        SELECT oa.*
+        FROM operational_agreements oa
+        JOIN organization_members om
+          ON om.organization_id = oa.organization_id
+        WHERE oa.id = $1
+          AND om.user_id = $2
+          AND om.status = 'active'
+        "#,
+        )
+        .bind(id)
+        .bind(user_id)
+        .fetch_one(db)
+        .await
+    }
+
+    pub async fn for_organization_for_user(
+        db: &PgPool,
+        organization_id: i64,
+        user_id: i64,
+    ) -> SqlxResult<Vec<Self>> {
+        sqlx::query_as::<_, OperationalAgreement>(
+            r#"
+        SELECT oa.*
+        FROM operational_agreements oa
+        JOIN organization_members om
+          ON om.organization_id = oa.organization_id
+        WHERE oa.organization_id = $1
+          AND om.user_id = $2
+          AND om.status = 'active'
+        ORDER BY oa.created_at DESC
+        "#,
+        )
+        .bind(organization_id)
+        .bind(user_id)
+        .fetch_all(db)
+        .await
+    }
+
+    pub async fn latest_for_engagement_for_user(
+        db: &PgPool,
+        engagement_id: i64,
+        user_id: i64,
+    ) -> SqlxResult<Option<Self>> {
+        sqlx::query_as::<_, OperationalAgreement>(
+            r#"
+        SELECT oa.*
+        FROM operational_agreements oa
+        JOIN organization_members om
+          ON om.organization_id = oa.organization_id
+        WHERE oa.engagement_id = $1
+          AND om.user_id = $2
+          AND om.status = 'active'
+        ORDER BY oa.created_at DESC
+        LIMIT 1
+        "#,
+        )
+        .bind(engagement_id)
+        .bind(user_id)
+        .fetch_optional(db)
+        .await
+    }
+
+    pub async fn lock_for_user(db: &PgPool, id: i64, user_id: i64) -> SqlxResult<Self> {
+        sqlx::query_as::<_, OperationalAgreement>(
+            r#"
+        UPDATE operational_agreements oa
+        SET status = 'locked'
+        FROM organization_members om
+        WHERE oa.id = $1
+          AND om.organization_id = oa.organization_id
+          AND om.user_id = $2
+          AND om.status = 'active'
+          AND om.role IN ('owner', 'admin')
+        RETURNING oa.*
+        "#,
+        )
+        .bind(id)
+        .bind(user_id)
         .fetch_one(db)
         .await
     }

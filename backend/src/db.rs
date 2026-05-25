@@ -1,148 +1,20 @@
-use sqlx::Executor;
-use sqlx::sqlite::SqlitePool;
 use std::sync::Arc;
+
+use sqlx::PgPool;
+use sqlx::postgres::PgPoolOptions;
 
 #[derive(Clone)]
 pub struct Db {
-    pub pool: Arc<SqlitePool>,
+    pub pool: Arc<PgPool>,
 }
 
 impl Db {
-    /// Create a new Db instance and run migrations
-    pub async fn new(database_url: &str) -> sqlx::Result<Self> {
-        let pool = SqlitePool::connect(database_url).await?;
-        Self::migrate(&pool).await?;
-        Ok(Self {
-            pool: Arc::new(pool),
-        })
-    }
+    pub async fn new(database_url: &str) -> Result<Self, sqlx::Error> {
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .connect(database_url)
+            .await?;
 
-    /// Run the table creation migrations
-    async fn migrate(pool: &SqlitePool) -> sqlx::Result<()> {
-        let sql = r#"
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            email TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            name TEXT,
-            user_type TEXT NOT NULL DEFAULT 'consultant',
-            created_at TEXT,
-            updated_at TEXT
-        );
-
-        CREATE TABLE IF NOT EXISTS organizations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            created_at TEXT,
-            updated_at TEXT
-        );
-
-        CREATE TABLE IF NOT EXISTS organization_members (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            organization_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
-            role TEXT NOT NULL DEFAULT 'viewer',
-            created_at TEXT,
-            updated_at TEXT,
-            FOREIGN KEY(organization_id) REFERENCES organizations(id),
-            FOREIGN KEY(user_id) REFERENCES users(id),
-            UNIQUE(organization_id, user_id)
-        );
-
-        CREATE TABLE IF NOT EXISTS clients (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            email TEXT NOT NULL UNIQUE,
-            tax_id TEXT,
-            phone TEXT,
-            company_name TEXT,
-            organization_id INTEGER NOT NULL,
-            address TEXT,
-            city TEXT,
-            state TEXT,
-            zip TEXT,
-            country TEXT,
-            created_at TEXT,
-            updated_at TEXT
-        );
-
-        CREATE TABLE IF NOT EXISTS projects (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            client_id INTEGER NOT NULL,
-            name TEXT NOT NULL,
-            start_date TEXT,
-            organization_id INTEGER NOT NULL,
-            end_date TEXT,
-            description TEXT,
-            created_at TEXT,
-            updated_at TEXT,
-            FOREIGN KEY(client_id) REFERENCES clients(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS contracts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            project_id INTEGER NOT NULL,
-            title TEXT NOT NULL,
-            status TEXT NOT NULL,
-            signed_at TEXT,
-            start_date TEXT,
-            end_date TEXT,
-            value REAL,
-            organization_id INTEGER NOT NULL,
-            currency TEXT,
-            terms TEXT,
-            notes TEXT,
-            external_id TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT,
-            FOREIGN KEY(project_id) REFERENCES projects(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS invoices (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            contract_id INTEGER NOT NULL,
-            invoice_number TEXT NOT NULL,
-            status TEXT NOT NULL,
-            issued_at TEXT,
-            due_date TEXT,
-            subtotal REAL,
-            tax REAL,
-            organization_id INTEGER NOT NULL,
-            total REAL,
-            currency TEXT,
-            notes TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT,
-            FOREIGN KEY(contract_id) REFERENCES contracts(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS payments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            invoice_id INTEGER NOT NULL,
-            paid_at TEXT,
-            amount REAL NOT NULL,
-            currency TEXT,
-            organization_id INTEGER NOT NULL,
-            method TEXT,
-            reference TEXT,
-            notes TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT,
-            FOREIGN KEY(invoice_id) REFERENCES invoices(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS password_reset_tokens (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            token_hash TEXT NOT NULL,
-            expires_at TEXT NOT NULL,
-            used_at TEXT,
-            created_at TEXT NOT NULL,
-            FOREIGN KEY(user_id) REFERENCES users(id)
-        );
-        "#;
-
-        pool.execute(sql).await?;
-        Ok(())
+        Ok(Self { pool: pool.into() })
     }
 }

@@ -1,15 +1,18 @@
 use actix_web::{HttpResponse, Responder, web};
 
+use crate::auth_context::AuthUser;
 use crate::db::Db;
 use crate::models::engagement_milestone::{
     CreateEngagementMilestone, CreateEngagementMilestoneRequest, EngagementMilestone,
     UpdateEngagementMilestoneRequest,
 };
 use crate::models::operational_agreement::OperationalAgreement;
+use crate::services::authz::{require_org_member, require_org_role};
 use crate::services::event_service::EventService;
 use crate::services::notification_email_recipient_service::NotificationRecipientService;
 use crate::services::notification_service::NotificationService;
 use crate::services::transaction_workflow_service::TransactionWorkflowService;
+use actix_web::ResponseError;
 
 async fn notify_milestone_parties(
     db: &Db,
@@ -107,39 +110,58 @@ async fn record_milestone_and_engagement_event(
     )
     .await;
 }
-async fn organization_id_for_milestone(db: &Db, milestone_id: i64) -> Result<i64, sqlx::Error> {
-    sqlx::query_scalar!(
+async fn organization_id_for_engagement(db: &Db, engagement_id: i64) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar::<_, i64>(
         r#"
-        SELECT e.organization_id as "organization_id!"
-        FROM engagement_milestones m
-        JOIN engagements e ON e.id = m.engagement_id
-        WHERE m.id = $1
+        SELECT organization_id
+        FROM engagements
+        WHERE id = $1
         "#,
-        milestone_id
     )
+    .bind(engagement_id)
     .fetch_one(db.pool.as_ref())
     .await
 }
 
-async fn engagement_id_for_milestone(db: &Db, milestone_id: i64) -> Result<i64, sqlx::Error> {
-    sqlx::query_scalar!(
+async fn organization_id_for_milestone(db: &Db, milestone_id: i64) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar::<_, i64>(
         r#"
-        SELECT engagement_id as "engagement_id!"
-        FROM engagement_milestones
-        WHERE id = $1
+        SELECT e.organization_id
+        FROM engagement_milestones m
+        JOIN engagements e ON e.id = m.engagement_id
+        WHERE m.id = $1
         "#,
-        milestone_id
     )
+    .bind(milestone_id)
     .fetch_one(db.pool.as_ref())
     .await
 }
+
 /// CREATE milestone for engagement
 pub async fn create_engagement_milestone(
     db: web::Data<Db>,
+    auth: AuthUser,
     path: web::Path<i64>,
     payload: web::Json<CreateEngagementMilestoneRequest>,
 ) -> impl Responder {
     let engagement_id = path.into_inner();
+
+    let organization_id = match organization_id_for_engagement(&db, engagement_id).await {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::NotFound().body("Engagement not found"),
+    };
+
+    if let Err(err) = require_org_role(
+        db.pool.as_ref(),
+        auth.id,
+        organization_id,
+        &["owner", "admin"],
+    )
+    .await
+    {
+        return err.error_response();
+    }
+
     let input = payload.into_inner();
 
     let milestone = CreateEngagementMilestone {
@@ -152,35 +174,21 @@ pub async fn create_engagement_milestone(
 
     match EngagementMilestone::create(db.pool.as_ref(), milestone).await {
         Ok(milestone) => {
-            let organization_id = sqlx::query_scalar!(
-                r#"
-        SELECT organization_id as "organization_id!"
-        FROM engagements
-        WHERE id = $1
-        "#,
-                milestone.engagement_id
+            record_milestone_and_engagement_event(
+                &db,
+                organization_id,
+                milestone.id,
+                milestone.engagement_id,
+                "MilestoneCreated",
+                Some(&milestone.status),
+                serde_json::json!({
+                    "milestone_id": milestone.id,
+                    "engagement_id": milestone.engagement_id,
+                    "title": milestone.title,
+                    "amount_cents": milestone.amount_cents
+                }),
             )
-            .fetch_one(db.pool.as_ref())
-            .await
-            .unwrap_or(0);
-
-            if organization_id != 0 {
-                record_milestone_and_engagement_event(
-                    &db,
-                    organization_id,
-                    milestone.id,
-                    milestone.engagement_id,
-                    "MilestoneCreated",
-                    Some(&milestone.status),
-                    serde_json::json!({
-                        "milestone_id": milestone.id,
-                        "engagement_id": milestone.engagement_id,
-                        "title": milestone.title,
-                        "amount_cents": milestone.amount_cents
-                    }),
-                )
-                .await;
-            }
+            .await;
 
             HttpResponse::Created().json(milestone)
         }
@@ -190,19 +198,27 @@ pub async fn create_engagement_milestone(
         }
     }
 }
-
 /// LIST milestones for engagement
-pub async fn list_engagement_milestones(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
+pub async fn list_engagement_milestones(
+    db: web::Data<Db>,
+    auth: AuthUser,
+    path: web::Path<i64>,
+) -> impl Responder {
     let engagement_id = path.into_inner();
 
-    println!("Loading milestones for engagement_id: {}", engagement_id);
+    let organization_id = match organization_id_for_engagement(&db, engagement_id).await {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::NotFound().body("Engagement not found"),
+    };
+
+    if let Err(err) = require_org_member(db.pool.as_ref(), auth.id, organization_id).await {
+        return err.error_response();
+    }
 
     match EngagementMilestone::for_engagement(db.pool.as_ref(), engagement_id).await {
         Ok(items) => HttpResponse::Ok().json(items),
-
         Err(err) => {
             eprintln!("list_engagement_milestones error: {:?}", err);
-
             HttpResponse::InternalServerError().body(err.to_string())
         }
     }
@@ -211,10 +227,26 @@ pub async fn list_engagement_milestones(db: web::Data<Db>, path: web::Path<i64>)
 /// MARK milestone submitted
 pub async fn submit_engagement_milestone(
     db: web::Data<Db>,
+    auth: AuthUser,
     path: web::Path<i64>,
 ) -> impl Responder {
     let milestone_id = path.into_inner();
 
+    let organization_id = match organization_id_for_milestone(&db, milestone_id).await {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::NotFound().body("Milestone not found"),
+    };
+
+    if let Err(err) = require_org_role(
+        db.pool.as_ref(),
+        auth.id,
+        organization_id,
+        &["owner", "admin"],
+    )
+    .await
+    {
+        return err.error_response();
+    }
     println!("Submitting milestone_id: {}", milestone_id);
 
     match EngagementMilestone::update_status(db.pool.as_ref(), milestone_id, "submitted").await {
@@ -252,9 +284,26 @@ pub async fn submit_engagement_milestone(
 /// MARK milestone approved
 pub async fn approve_engagement_milestone(
     db: web::Data<Db>,
+    auth: AuthUser,
     path: web::Path<i64>,
 ) -> impl Responder {
     let milestone_id = path.into_inner();
+
+    let organization_id = match organization_id_for_milestone(&db, milestone_id).await {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::NotFound().body("Milestone not found"),
+    };
+
+    if let Err(err) = require_org_role(
+        db.pool.as_ref(),
+        auth.id,
+        organization_id,
+        &["owner", "admin"],
+    )
+    .await
+    {
+        return err.error_response();
+    }
 
     println!("Approving milestone_id: {}", milestone_id);
 
@@ -318,10 +367,26 @@ pub async fn approve_engagement_milestone(
 /// MARK milestone paid
 pub async fn mark_engagement_milestone_paid(
     db: web::Data<Db>,
+    auth: AuthUser,
     path: web::Path<i64>,
 ) -> impl Responder {
     let milestone_id = path.into_inner();
 
+    let organization_id = match organization_id_for_milestone(&db, milestone_id).await {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::NotFound().body("Milestone not found"),
+    };
+
+    if let Err(err) = require_org_role(
+        db.pool.as_ref(),
+        auth.id,
+        organization_id,
+        &["owner", "admin"],
+    )
+    .await
+    {
+        return err.error_response();
+    }
     println!("Marking milestone paid: {}", milestone_id);
 
     match EngagementMilestone::update_status(db.pool.as_ref(), milestone_id, "paid").await {
@@ -358,10 +423,27 @@ pub async fn mark_engagement_milestone_paid(
 /// UPDATE milestone details
 pub async fn update_engagement_milestone(
     db: web::Data<Db>,
+    auth: AuthUser,
     path: web::Path<i64>,
     payload: web::Json<UpdateEngagementMilestoneRequest>,
 ) -> impl Responder {
     let milestone_id = path.into_inner();
+
+    let organization_id = match organization_id_for_milestone(&db, milestone_id).await {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::NotFound().body("Milestone not found"),
+    };
+
+    if let Err(err) = require_org_role(
+        db.pool.as_ref(),
+        auth.id,
+        organization_id,
+        &["owner", "admin"],
+    )
+    .await
+    {
+        return err.error_response();
+    }
     let input = payload.into_inner();
 
     println!("Updating milestone_id: {}", milestone_id);
@@ -400,10 +482,26 @@ pub async fn update_engagement_milestone(
 /// REOPEN milestone
 pub async fn reopen_engagement_milestone(
     db: web::Data<Db>,
+    auth: AuthUser,
     path: web::Path<i64>,
 ) -> impl Responder {
     let milestone_id = path.into_inner();
 
+    let organization_id = match organization_id_for_milestone(&db, milestone_id).await {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::NotFound().body("Milestone not found"),
+    };
+
+    if let Err(err) = require_org_role(
+        db.pool.as_ref(),
+        auth.id,
+        organization_id,
+        &["owner", "admin"],
+    )
+    .await
+    {
+        return err.error_response();
+    }
     println!("Reopening milestone_id: {}", milestone_id);
 
     match EngagementMilestone::reopen(db.pool.as_ref(), milestone_id).await {

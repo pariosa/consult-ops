@@ -1,6 +1,7 @@
-//src/models/agreement_payout_rule.rs
+// src/models/agreement_payout_rule.rs
+
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, Result as SqlxResult, SqlitePool};
+use sqlx::{FromRow, PgPool, Result as SqlxResult};
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct AgreementPayoutRule {
@@ -27,7 +28,7 @@ pub struct CreateAgreementPayoutRule {
 
 impl AgreementPayoutRule {
     pub async fn create(
-        db: &SqlitePool,
+        db: &PgPool,
         agreement_id: i64,
         payload: CreateAgreementPayoutRule,
     ) -> SqlxResult<Self> {
@@ -43,7 +44,7 @@ impl AgreementPayoutRule {
                 trigger_event,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
             RETURNING *
             "#,
         )
@@ -58,12 +59,12 @@ impl AgreementPayoutRule {
         .await
     }
 
-    pub async fn for_agreement(db: &SqlitePool, agreement_id: i64) -> SqlxResult<Vec<Self>> {
+    pub async fn for_agreement(db: &PgPool, agreement_id: i64) -> SqlxResult<Vec<Self>> {
         sqlx::query_as::<_, AgreementPayoutRule>(
             r#"
             SELECT *
             FROM agreement_payout_rules
-            WHERE agreement_id = ?
+            WHERE agreement_id = $1
             ORDER BY created_at DESC
             "#,
         )

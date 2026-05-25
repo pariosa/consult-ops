@@ -1,3 +1,4 @@
+pub mod authz;
 pub mod email_notification_service;
 pub mod event_service;
 pub mod notification_email_recipient_service;

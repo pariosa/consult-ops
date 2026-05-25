@@ -1,17 +1,35 @@
-use actix_web::{HttpResponse, Responder, web};
+use actix_web::{HttpResponse, Responder, ResponseError, web};
 
-use crate::auth::permissions::can_manage_agreements;
 use crate::auth_context::AuthUser;
 use crate::db::Db;
 use crate::models::agreement_payout_rule::{AgreementPayoutRule, CreateAgreementPayoutRule};
 use crate::models::operational_agreement::{CreateOperationalAgreement, OperationalAgreement};
+use crate::services::authz::{require_org_member, require_org_role};
 use crate::services::event_service::EventService;
+
+async fn organization_id_for_agreement(db: &Db, agreement_id: i64) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT organization_id
+        FROM operational_agreements
+        WHERE id = $1
+        "#,
+    )
+    .bind(agreement_id)
+    .fetch_one(db.pool.as_ref())
+    .await
+}
 
 pub async fn list_organization_agreements(
     db: web::Data<Db>,
+    auth: AuthUser,
     path: web::Path<i64>,
 ) -> impl Responder {
     let organization_id = path.into_inner();
+
+    if let Err(err) = require_org_member(db.pool.as_ref(), auth.id, organization_id).await {
+        return err.error_response();
+    }
 
     match OperationalAgreement::for_organization(db.pool.as_ref(), organization_id).await {
         Ok(agreements) => HttpResponse::Ok().json(agreements),
@@ -28,13 +46,18 @@ pub async fn create_organization_agreement(
     path: web::Path<i64>,
     payload: web::Json<CreateOperationalAgreement>,
 ) -> impl Responder {
-    if !can_manage_agreements(&auth.user_type) {
-        return HttpResponse::Forbidden().json(serde_json::json!({
-            "error": "You do not have permission to create agreements."
-        }));
-    }
-
     let organization_id = path.into_inner();
+
+    if let Err(err) = require_org_role(
+        db.pool.as_ref(),
+        auth.id,
+        organization_id,
+        &["owner", "admin"],
+    )
+    .await
+    {
+        return err.error_response();
+    }
 
     match OperationalAgreement::create(db.pool.as_ref(), organization_id, payload.into_inner())
         .await
@@ -43,7 +66,7 @@ pub async fn create_organization_agreement(
             let _ = EventService::record_event(
                 db.pool.as_ref(),
                 organization_id,
-                None,
+                Some(auth.id),
                 "operational_agreement",
                 agreement.id,
                 "OperationalAgreementCreated",
@@ -61,7 +84,7 @@ pub async fn create_organization_agreement(
                 let _ = EventService::record_event(
                     db.pool.as_ref(),
                     organization_id,
-                    None,
+                    Some(auth.id),
                     "engagement",
                     engagement_id,
                     "OperationalAgreementCreated",
@@ -87,9 +110,19 @@ pub async fn create_organization_agreement(
 
 pub async fn list_agreement_payout_rules(
     db: web::Data<Db>,
+    auth: AuthUser,
     path: web::Path<i64>,
 ) -> impl Responder {
     let agreement_id = path.into_inner();
+
+    let organization_id = match organization_id_for_agreement(&db, agreement_id).await {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::NotFound().body("Agreement not found"),
+    };
+
+    if let Err(err) = require_org_member(db.pool.as_ref(), auth.id, organization_id).await {
+        return err.error_response();
+    }
 
     match AgreementPayoutRule::for_agreement(db.pool.as_ref(), agreement_id).await {
         Ok(rules) => HttpResponse::Ok().json(rules),
@@ -106,13 +139,24 @@ pub async fn create_agreement_payout_rule(
     path: web::Path<i64>,
     payload: web::Json<CreateAgreementPayoutRule>,
 ) -> impl Responder {
-    if !can_manage_agreements(&auth.user_type) {
-        return HttpResponse::Forbidden().json(serde_json::json!({
-            "error": "You do not have permission to create agreements."
-        }));
-    }
     let agreement_id = path.into_inner();
     let input = payload.into_inner();
+
+    let organization_id = match organization_id_for_agreement(&db, agreement_id).await {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::NotFound().body("Agreement not found"),
+    };
+
+    if let Err(err) = require_org_role(
+        db.pool.as_ref(),
+        auth.id,
+        organization_id,
+        &["owner", "admin"],
+    )
+    .await
+    {
+        return err.error_response();
+    }
 
     if input.percent.is_none() && input.amount_cents.is_none() {
         return HttpResponse::BadRequest().body("Rule requires percent or amount_cents");
@@ -123,22 +167,46 @@ pub async fn create_agreement_payout_rule(
             return HttpResponse::BadRequest().body("percent must be between 1 and 100");
         }
     }
+
+    let party_count = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT COUNT(*)::BIGINT
+        FROM parties
+        WHERE organization_id = $1
+          AND id IN ($2, $3)
+        "#,
+    )
+    .bind(organization_id)
+    .bind(input.from_party_id)
+    .bind(input.to_party_id)
+    .fetch_one(db.pool.as_ref())
+    .await
+    .unwrap_or(0);
+
+    if party_count < 2 {
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Payer and payee parties must both belong to this organization."
+        }));
+    }
+
     let requires_verified_parties = matches!(
         input.rule_type.as_str(),
         "contractor_payout" | "revenue_share" | "dividend"
     );
 
     if requires_verified_parties {
-        let verified_count: i32 = sqlx::query_scalar!(
+        let verified_count = sqlx::query_scalar::<_, i64>(
             r#"
-        SELECT COUNT(*) as "count!"
-        FROM parties
-        WHERE id IN ($1, $2)
-          AND is_verified = 1
-        "#,
-            input.from_party_id,
-            input.to_party_id
+            SELECT COUNT(*)::BIGINT
+            FROM parties
+            WHERE organization_id = $1
+              AND id IN ($2, $3)
+              AND is_verified = 1
+            "#,
         )
+        .bind(organization_id)
+        .bind(input.from_party_id)
+        .bind(input.to_party_id)
         .fetch_one(db.pool.as_ref())
         .await
         .unwrap_or(0);
@@ -149,22 +217,23 @@ pub async fn create_agreement_payout_rule(
             }));
         }
     }
-    let duplicate_count: i32 = sqlx::query_scalar!(
+
+    let duplicate_count = sqlx::query_scalar::<_, i64>(
         r#"
-    SELECT COUNT(*) as "count!"
-    FROM agreement_payout_rules
-    WHERE agreement_id = $1
-      AND from_party_id = $2
-      AND to_party_id = $3
-      AND rule_type = $4
-      AND trigger_event = $5
-    "#,
-        agreement_id,
-        input.from_party_id,
-        input.to_party_id,
-        input.rule_type,
-        input.trigger_event
+        SELECT COUNT(*)::BIGINT
+        FROM agreement_payout_rules
+        WHERE agreement_id = $1
+          AND from_party_id = $2
+          AND to_party_id = $3
+          AND rule_type = $4
+          AND trigger_event = $5
+        "#,
     )
+    .bind(agreement_id)
+    .bind(input.from_party_id)
+    .bind(input.to_party_id)
+    .bind(&input.rule_type)
+    .bind(&input.trigger_event)
     .fetch_one(db.pool.as_ref())
     .await
     .unwrap_or(0);
@@ -172,42 +241,29 @@ pub async fn create_agreement_payout_rule(
     if duplicate_count > 0 {
         return HttpResponse::Conflict().body("Duplicate payout rule already exists");
     }
+
     match AgreementPayoutRule::create(db.pool.as_ref(), agreement_id, input).await {
         Ok(rule) => {
-            let organization_id = sqlx::query_scalar!(
-                r#"
-                SELECT organization_id as "organization_id!"
-                FROM operational_agreements
-                WHERE id = $1
-                "#,
-                agreement_id
+            let _ = EventService::record_event(
+                db.pool.as_ref(),
+                organization_id,
+                Some(auth.id),
+                "agreement_payout_rule",
+                rule.id,
+                "AgreementPayoutRuleCreated",
+                None,
+                Some("active"),
+                serde_json::json!({
+                    "agreement_id": rule.agreement_id,
+                    "from_party_id": rule.from_party_id,
+                    "to_party_id": rule.to_party_id,
+                    "rule_type": rule.rule_type,
+                    "percent": rule.percent,
+                    "amount_cents": rule.amount_cents,
+                    "trigger_event": rule.trigger_event
+                }),
             )
-            .fetch_one(db.pool.as_ref())
-            .await
-            .unwrap_or(0);
-
-            if organization_id != 0 {
-                let _ = EventService::record_event(
-                    db.pool.as_ref(),
-                    organization_id,
-                    None,
-                    "agreement_payout_rule",
-                    rule.id,
-                    "AgreementPayoutRuleCreated",
-                    None,
-                    Some("active"),
-                    serde_json::json!({
-                        "agreement_id": rule.agreement_id,
-                        "from_party_id": rule.from_party_id,
-                        "to_party_id": rule.to_party_id,
-                        "rule_type": rule.rule_type,
-                        "percent": rule.percent,
-                        "amount_cents": rule.amount_cents,
-                        "trigger_event": rule.trigger_event
-                    }),
-                )
-                .await;
-            }
+            .await;
 
             HttpResponse::Created().json(rule)
         }
@@ -218,26 +274,71 @@ pub async fn create_agreement_payout_rule(
     }
 }
 
-pub async fn lock_agreement(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
+pub async fn lock_agreement(
+    db: web::Data<Db>,
+    auth: AuthUser,
+    path: web::Path<i64>,
+) -> impl Responder {
     let agreement_id = path.into_inner();
 
-    let rule_count: (i64,) =
-        match sqlx::query_as("SELECT COUNT(*) FROM agreement_payout_rules WHERE agreement_id = ?")
-            .bind(agreement_id)
-            .fetch_one(db.pool.as_ref())
-            .await
-        {
-            Ok(count) => count,
-            Err(err) => return HttpResponse::InternalServerError().body(err.to_string()),
-        };
+    let organization_id = match organization_id_for_agreement(&db, agreement_id).await {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::NotFound().body("Agreement not found"),
+    };
 
-    if rule_count.0 == 0 {
+    if let Err(err) = require_org_role(
+        db.pool.as_ref(),
+        auth.id,
+        organization_id,
+        &["owner", "admin"],
+    )
+    .await
+    {
+        return err.error_response();
+    }
+
+    let rule_count = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT COUNT(*)::BIGINT
+        FROM agreement_payout_rules
+        WHERE agreement_id = $1
+        "#,
+    )
+    .bind(agreement_id)
+    .fetch_one(db.pool.as_ref())
+    .await;
+
+    let rule_count = match rule_count {
+        Ok(count) => count,
+        Err(err) => return HttpResponse::InternalServerError().body(err.to_string()),
+    };
+
+    if rule_count == 0 {
         return HttpResponse::Conflict()
             .body("Agreement must have at least one payout rule before locking.");
     }
 
     match OperationalAgreement::lock(db.pool.as_ref(), agreement_id).await {
-        Ok(agreement) => HttpResponse::Ok().json(agreement),
+        Ok(agreement) => {
+            let _ = EventService::record_event(
+                db.pool.as_ref(),
+                organization_id,
+                Some(auth.id),
+                "operational_agreement",
+                agreement.id,
+                "OperationalAgreementLocked",
+                None,
+                Some(&agreement.status),
+                serde_json::json!({
+                    "agreement_id": agreement.id,
+                    "engagement_id": agreement.engagement_id,
+                    "agreement_type": agreement.agreement_type
+                }),
+            )
+            .await;
+
+            HttpResponse::Ok().json(agreement)
+        }
         Err(err) => HttpResponse::InternalServerError().body(err.to_string()),
     }
 }

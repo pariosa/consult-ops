@@ -159,7 +159,7 @@ async fn write_audit_event(
             metadata_json,
             created_at
         )
-        VALUES (?, ?, ?, ?, '{}', ?)
+        VALUES ($1, $2, $3, $4, '{}', $5)
         "#,
     )
     .bind(actor_user_id)
@@ -180,7 +180,7 @@ async fn record_auth_attempt(db: &Db, email: &str, action: &str, success: bool) 
             success,
             created_at
         )
-        VALUES (?, ?, ?, ?)
+        VALUES ($1, $2, $3, $4)
         "#,
     )
     .bind(email)
@@ -198,10 +198,10 @@ async fn too_many_failed_logins(db: &Db, email: &str) -> bool {
         r#"
         SELECT COUNT(*)
         FROM auth_attempts
-        WHERE email = ?
+        WHERE email = $1
           AND action = 'login'
           AND success = 0
-          AND created_at > ?
+          AND created_at > $2
         "#,
     )
     .bind(email)
@@ -222,33 +222,39 @@ pub async fn register(db: web::Data<Db>, info: web::Json<RegisterInfo>) -> impl 
 
     let now = Utc::now().to_rfc3339();
 
+    let normalized_email = info.email.trim().to_lowercase();
+
     let user_type = info
         .user_type
         .clone()
         .unwrap_or_else(|| "owner".to_string());
 
-    let result = sqlx::query(
+    let user_id = match sqlx::query_scalar::<_, i64>(
         r#"
-        INSERT INTO users
-        (email, password_hash, name, user_type, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO users (
+            email,
+            password_hash,
+            name,
+            user_type,
+            created_at,
+            updated_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id
         "#,
     )
-    .bind(&info.email)
+    .bind(&normalized_email)
     .bind(&hash)
     .bind(&info.name)
     .bind(&user_type)
     .bind(&now)
     .bind(&now)
-    .execute(&*db.pool)
-    .await;
-
-    let rec = match result {
-        Ok(rec) => rec,
+    .fetch_one(db.pool.as_ref())
+    .await
+    {
+        Ok(id) => id,
         Err(e) => return HttpResponse::BadRequest().body(e.to_string()),
     };
-
-    let user_id = rec.last_insert_rowid();
 
     let raw_token = generate_reset_token();
     let token_hash = hash_token(&raw_token);
@@ -256,45 +262,53 @@ pub async fn register(db: web::Data<Db>, info: web::Json<RegisterInfo>) -> impl 
 
     let token_result = sqlx::query(
         r#"
-        INSERT INTO email_verification_tokens
-        (user_id, token_hash, expires_at, created_at)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO email_verification_tokens (
+            user_id,
+            token_hash,
+            expires_at,
+            created_at
+        )
+        VALUES ($1, $2, $3, $4)
         "#,
     )
     .bind(user_id)
     .bind(token_hash)
     .bind(expires_at)
     .bind(Utc::now().to_rfc3339())
-    .execute(&*db.pool)
+    .execute(db.pool.as_ref())
     .await;
 
     if let Err(e) = token_result {
         return HttpResponse::InternalServerError().body(e.to_string());
     }
+
     let app_url = std::env::var("APP_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
 
     let verification_url = format!("{}/verify-email?token={}", app_url, raw_token);
 
-    match EmailNotificationService::email_verification(info.email.clone(), verification_url).await {
-        Ok(_) => eprintln!("Verification email sent to {}", info.email),
+    match EmailNotificationService::email_verification(normalized_email.clone(), verification_url)
+        .await
+    {
+        Ok(_) => eprintln!("Verification email sent to {}", normalized_email),
         Err(err) => eprintln!("EMAIL SEND FAILED: {}", err),
     }
+
     HttpResponse::Ok().json(AuthResponse {
         message: "User registered".to_string(),
         user_id,
-        email: info.email.clone(),
+        email: normalized_email,
     })
 }
-
 pub async fn login(db: web::Data<Db>, info: web::Json<AuthInfo>) -> impl Responder {
     if too_many_failed_logins(&db, &info.email).await {
         return HttpResponse::TooManyRequests().body("Too many failed login attempts");
     }
+
     let user = sqlx::query_as::<_, User>(
         r#"
         SELECT id, email, password_hash, name, user_type, email_verified_at
         FROM users
-        WHERE email = ?
+        WHERE email = $1
     "#,
     )
     .bind(&info.email)
@@ -337,7 +351,7 @@ pub async fn login(db: web::Data<Db>, info: web::Json<AuthInfo>) -> impl Respond
             r#"
         INSERT INTO auth_sessions
         (user_id, token_jti, expires_at, created_at, last_seen_at)
-        VALUES (?, ?, ?, ?, ?)
+        VALUES ($1, $2, $3, $4, $5)
         "#,
         )
         .bind(user.id)
@@ -347,6 +361,13 @@ pub async fn login(db: web::Data<Db>, info: web::Json<AuthInfo>) -> impl Respond
         .bind(Utc::now().to_rfc3339())
         .execute(&*db.pool)
         .await;
+
+        println!("LOGIN ATTEMPT {}", info.email);
+        println!("PASSWORD HASH {}", user.password_hash);
+
+        let verify_result = verify_password(&info.password, &user.password_hash);
+
+        println!("VERIFY RESULT {}", verify_result);
 
         if let Err(e) = session_result {
             return HttpResponse::InternalServerError().body(e.to_string());
@@ -403,7 +424,7 @@ pub async fn forgot_password(
         r#"
         SELECT id, email, password_hash, name
         FROM users
-        WHERE email = ?
+        WHERE email = $1
         "#,
     )
     .bind(&info.email)
@@ -427,7 +448,7 @@ pub async fn forgot_password(
         r#"
     INSERT INTO password_reset_tokens
     (user_id, token_hash, expires_at, created_at)
-    VALUES (?, ?, ?, ?)
+    VALUES ($1, $2, $3, $4)
     "#,
     )
     .bind(user.id)
@@ -468,7 +489,7 @@ pub async fn reset_password(
         r#"
     SELECT id, user_id, expires_at, used_at
     FROM password_reset_tokens
-    WHERE token_hash = ?
+    WHERE token_hash = $1
     "#,
     )
     .bind(&token_hash)
@@ -501,8 +522,8 @@ pub async fn reset_password(
     let result = sqlx::query(
         r#"
     UPDATE users
-    SET password_hash = ?, updated_at = ?
-    WHERE id = ?
+    SET password_hash = $1, updated_at = $2
+    WHERE id = $3
     "#,
     )
     .bind(&new_hash)
@@ -518,8 +539,8 @@ pub async fn reset_password(
     let _ = sqlx::query(
         r#"
     UPDATE password_reset_tokens
-    SET used_at = ?
-    WHERE id = ?
+    SET used_at = $1
+    WHERE id = $2
     "#,
     )
     .bind(Utc::now().to_rfc3339())
@@ -531,8 +552,8 @@ pub async fn reset_password(
     let _ = sqlx::query(
         r#"
     UPDATE auth_sessions
-    SET revoked_at = ?
-    WHERE user_id = ?
+    SET revoked_at = $1
+    WHERE user_id = $2
       AND revoked_at IS NULL
     "#,
     )
@@ -558,9 +579,9 @@ pub async fn logout(db: web::Data<Db>, auth_user: AuthUser) -> impl Responder {
     let result = sqlx::query(
         r#"
         UPDATE auth_sessions
-        SET revoked_at = ?
-        WHERE user_id = ?
-          AND token_jti = ?
+        SET revoked_at = $1
+        WHERE user_id = $2
+          AND token_jti = $3
           AND revoked_at IS NULL
         "#,
     )
@@ -588,7 +609,7 @@ pub async fn verify_email(
         r#"
         SELECT id, user_id, expires_at, used_at
         FROM email_verification_tokens
-        WHERE token_hash = ?
+        WHERE token_hash = $1
         "#,
     )
     .bind(token_hash)
@@ -620,8 +641,8 @@ pub async fn verify_email(
     let result = sqlx::query(
         r#"
         UPDATE users
-        SET email_verified_at = ?, updated_at = ?
-        WHERE id = ?
+        SET email_verified_at = $1, updated_at = $2
+        WHERE id = $3
         "#,
     )
     .bind(&now)
@@ -637,8 +658,8 @@ pub async fn verify_email(
     let used_result = sqlx::query(
         r#"
         UPDATE email_verification_tokens
-        SET used_at = ?
-        WHERE id = ?
+        SET used_at = $1
+        WHERE id = $2
         "#,
     )
     .bind(&now)
@@ -673,7 +694,7 @@ pub async fn resend_verification(
         r#"
         SELECT id, email, password_hash, name, user_type, email_verified_at
         FROM users
-        WHERE email = ?
+        WHERE email = $1
         "#,
     )
     .bind(&info.email)
@@ -704,8 +725,8 @@ pub async fn resend_verification(
     let _ = sqlx::query(
         r#"
         UPDATE email_verification_tokens
-        SET used_at = ?
-        WHERE user_id = ?
+        SET used_at = $1
+        WHERE user_id = $2
           AND used_at IS NULL
         "#,
     )
@@ -730,7 +751,7 @@ pub async fn resend_verification(
         r#"
         INSERT INTO email_verification_tokens
         (user_id, token_hash, expires_at, created_at)
-        VALUES (?, ?, ?, ?)
+        VALUES ($1, $2, $3, $4)
         "#,
     )
     .bind(user.id)
@@ -762,12 +783,12 @@ pub async fn list_auth_sessions(db: web::Data<Db>, auth: AuthUser) -> impl Respo
         r#"
         SELECT id, created_at, last_seen_at, expires_at, revoked_at
         FROM auth_sessions
-        WHERE user_id = ?
+        WHERE user_id = $1
         ORDER BY created_at DESC
         "#,
     )
     .bind(auth.id)
-    .fetch_all(&*db.pool)
+    .fetch_all(db.pool.as_ref())
     .await;
 
     match result {
@@ -787,9 +808,9 @@ pub async fn revoke_auth_session(
     let result = sqlx::query(
         r#"
         UPDATE auth_sessions
-        SET revoked_at = ?
-        WHERE id = ?
-          AND user_id = ?
+        SET revoked_at = $1
+        WHERE id = $2
+          AND user_id = $3
           AND revoked_at IS NULL
         "#,
     )
@@ -831,9 +852,9 @@ pub async fn auth_me(db: web::Data<Db>, auth: AuthUser) -> impl Responder {
         FROM users u
         LEFT JOIN auth_sessions s
             ON s.user_id = u.id
-           AND s.token_jti = ?
+           AND s.token_jti = $1
            AND s.revoked_at IS NULL
-        WHERE u.id = ?
+        WHERE u.id = $2
         "#,
     )
     .bind(&auth.jti)

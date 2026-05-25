@@ -4,44 +4,43 @@ use actix_web::test;
 use backend::auth::hash_password;
 use chrono::Utc;
 use common::{setup_test_db, test_app};
-async fn seed_test_organization(db: &backend::db::Db) {
-    let now = Utc::now().to_rfc3339();
 
-    sqlx::query(
+use serial_test::serial;
+async fn seed_test_organization(db: &backend::db::Db) -> i64 {
+    let now = Utc::now().to_rfc3339();
+    let slug = format!(
+        "atlas-test-org-{}",
+        Utc::now().timestamp_nanos_opt().unwrap_or_default()
+    );
+
+    sqlx::query_scalar::<_, i64>(
         r#"
-        INSERT INTO organizations (
-            id,
-            name,
-            created_at,
-            updated_at
-        )
-        VALUES (?, ?, ?, ?)
+        INSERT INTO organizations (name, slug, created_at, updated_at)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id
         "#,
     )
-    .bind(1)
     .bind("Atlas Test Org")
+    .bind(slug)
     .bind(&now)
     .bind(&now)
-    .execute(&*db.pool)
+    .fetch_one(db.pool.as_ref())
     .await
-    .unwrap();
+    .unwrap()
 }
-async fn seed_verified_admin(db: &backend::db::Db) {
+
+async fn seed_verified_admin(db: &backend::db::Db, organization_id: i64) -> i64 {
     let now = Utc::now().to_rfc3339();
     let password_hash = hash_password("DemoPass123!").unwrap();
 
-    sqlx::query(
+    let user_id = sqlx::query_scalar::<_, i64>(
         r#"
         INSERT INTO users (
-            email,
-            password_hash,
-            name,
-            user_type,
-            email_verified_at,
-            created_at,
-            updated_at
+            email, password_hash, name, user_type,
+            email_verified_at, current_organization_id, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING id
         "#,
     )
     .bind("admin@atlas.test")
@@ -49,19 +48,37 @@ async fn seed_verified_admin(db: &backend::db::Db) {
     .bind("Atlas Admin")
     .bind("admin")
     .bind(&now)
+    .bind(organization_id)
     .bind(&now)
     .bind(&now)
-    .execute(&*db.pool)
+    .fetch_one(db.pool.as_ref())
     .await
     .unwrap();
-}
 
+    sqlx::query(
+        r#"
+        INSERT INTO organization_members (
+            organization_id, user_id, role, status, created_at, updated_at
+        )
+        VALUES ($1, $2, 'admin', 'active', $3, $4)
+        "#,
+    )
+    .bind(organization_id)
+    .bind(user_id)
+    .bind(&now)
+    .bind(&now)
+    .execute(db.pool.as_ref())
+    .await
+    .unwrap();
+
+    user_id
+}
 #[actix_web::test]
+#[serial]
 async fn admin_can_create_party_and_read_default_payment_readiness() {
     let db = setup_test_db().await;
-    seed_verified_admin(&db).await;
-    seed_test_organization(&db).await;
-
+    let organization_id = seed_test_organization(&db).await;
+    let _admin_id = seed_verified_admin(&db, organization_id).await;
     let app = test::init_service(test_app(db.clone())).await;
 
     let login_req = test::TestRequest::post()
@@ -76,7 +93,7 @@ async fn admin_can_create_party_and_read_default_payment_readiness() {
     let token = login_resp["token"].as_str().unwrap().to_string();
 
     let req = test::TestRequest::post()
-        .uri("/api/organizations/1/parties")
+        .uri(&format!("/api/organizations/{}/parties", organization_id))
         .insert_header(("Authorization", format!("Bearer {}", token)))
         .set_json(serde_json::json!({
             "name": "Manual Contractor",
@@ -86,13 +103,19 @@ async fn admin_can_create_party_and_read_default_payment_readiness() {
         .to_request();
 
     let created: serde_json::Value = test::call_and_read_body_json(&app, req).await;
-
+    println!(
+        "CREATE PARTY BODY: {}",
+        serde_json::to_string_pretty(&created).unwrap()
+    );
     assert_eq!(created["name"], "Manual Contractor");
     assert_eq!(created["is_verified"], 0);
     assert_eq!(created["verification_status"], "unverified");
 
     let req = test::TestRequest::get()
-        .uri("/api/parties/1/payment-readiness")
+        .uri(&format!(
+            "/api/parties/{}/payment-readiness",
+            organization_id,
+        ))
         .insert_header(("Authorization", format!("Bearer {}", token)))
         .to_request();
 
@@ -104,11 +127,11 @@ async fn admin_can_create_party_and_read_default_payment_readiness() {
 }
 
 #[actix_web::test]
+#[serial]
 async fn admin_can_verify_party_and_authorize_payer_profile() {
     let db = setup_test_db().await;
-    seed_verified_admin(&db).await;
-    seed_test_organization(&db).await;
-
+    let organization_id = seed_test_organization(&db).await;
+    let _admin_id = seed_verified_admin(&db, organization_id).await;
     sqlx::query(
         r#"
         INSERT INTO parties (
@@ -119,7 +142,7 @@ async fn admin_can_verify_party_and_authorize_payer_profile() {
             is_verified,
             verification_status
         )
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES ($1, $2, $3, $4, $5, $6)
         "#,
     )
     .bind(1)
@@ -146,7 +169,7 @@ async fn admin_can_verify_party_and_authorize_payer_profile() {
     let token = login_resp["token"].as_str().unwrap().to_string();
 
     let req = test::TestRequest::post()
-        .uri("/api/parties/1/verify")
+        .uri(&format!("/api/parties/{}/verify", organization_id))
         .insert_header(("Authorization", format!("Bearer {}", token)))
         .to_request();
 
@@ -169,7 +192,7 @@ async fn admin_can_verify_party_and_authorize_payer_profile() {
     assert_eq!(verified["verification_method"], "admin");
 
     let req = test::TestRequest::post()
-        .uri("/api/parties/1/payment-profile")
+        .uri(&format!("/api/parties/{}/payment-profile", organization_id))
         .insert_header(("Authorization", format!("Bearer {}", token)))
         .set_json(serde_json::json!({
             "payment_role": "payer",
@@ -195,7 +218,10 @@ async fn admin_can_verify_party_and_authorize_payer_profile() {
     assert_eq!(profile["payer_authorization_status"], "not_configured");
 
     let req = test::TestRequest::post()
-        .uri("/api/parties/1/payer-authorized/dev")
+        .uri(&format!(
+            "/api/parties/{}/payer-authorized/dev",
+            organization_id,
+        ))
         .insert_header(("Authorization", format!("Bearer {}", token)))
         .to_request();
 
@@ -218,11 +244,12 @@ async fn admin_can_verify_party_and_authorize_payer_profile() {
 }
 
 #[actix_web::test]
+#[serial]
 async fn admin_can_mark_payee_payout_ready() {
     let db = setup_test_db().await;
-    seed_verified_admin(&db).await;
-    seed_test_organization(&db).await;
-    sqlx::query(
+    let organization_id = seed_test_organization(&db).await;
+    let _admin_id = seed_verified_admin(&db, organization_id).await;
+    let _user_id = sqlx::query(
         r#"
         INSERT INTO parties (
             organization_id,
@@ -234,7 +261,7 @@ async fn admin_can_mark_payee_payout_ready() {
             verified_at,
             verification_method
         )
-        VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW()::TEXT, $7)
         "#,
     )
     .bind(1)
@@ -262,7 +289,7 @@ async fn admin_can_mark_payee_payout_ready() {
     let token = login_resp["token"].as_str().unwrap().to_string();
 
     let req = test::TestRequest::post()
-        .uri("/api/parties/1/payment-profile")
+        .uri(&format!("/api/parties/{}/payment-profile", organization_id))
         .insert_header(("Authorization", format!("Bearer {}", token)))
         .set_json(serde_json::json!({
             "payment_role": "payee"
@@ -286,7 +313,10 @@ async fn admin_can_mark_payee_payout_ready() {
     assert_eq!(ready["payout_status"], "ready");
 
     let req = test::TestRequest::get()
-        .uri("/api/parties/1/payment-readiness")
+        .uri(&format!(
+            "/api/parties/{}/payment-readiness",
+            organization_id,
+        ))
         .insert_header(("Authorization", format!("Bearer {}", token)))
         .to_request();
 

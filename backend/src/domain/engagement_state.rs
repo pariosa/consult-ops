@@ -22,7 +22,8 @@ pub enum EngagementStatus {
     Disputed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
 pub enum EngagementEvent {
     ContractSent,
     ContractSigned,
@@ -96,5 +97,8 @@ impl EngagementStatus {
             self,
             EngagementStatus::Completed | EngagementStatus::Cancelled | EngagementStatus::Disputed
         )
+    }
+    pub fn can_transition(self, event: EngagementEvent) -> bool {
+        self.transition(event).is_ok()
     }
 }

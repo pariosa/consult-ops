@@ -68,10 +68,10 @@ impl FromRequest for AuthUser {
                 r#"
                 SELECT id
                 FROM auth_sessions
-                WHERE user_id = ?
-                  AND token_jti = ?
+                WHERE user_id = $1
+                  AND token_jti = $2
                   AND revoked_at IS NULL
-                  AND expires_at > ?
+                  AND expires_at > $3
                 "#,
             )
             .bind(user_id)
@@ -88,8 +88,8 @@ impl FromRequest for AuthUser {
             let _ = sqlx::query(
                 r#"
                 UPDATE auth_sessions
-                SET last_seen_at = ?
-                WHERE token_jti = ?
+                SET last_seen_at = $1
+                WHERE token_jti = $2
                 "#,
             )
             .bind(&now)

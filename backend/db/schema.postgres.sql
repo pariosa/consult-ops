@@ -1,382 +1,568 @@
-PRAGMA foreign_keys = ON;
+-- USERS
 
-CREATE TABLE IF NOT EXISTS organizations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    slug TEXT UNIQUE,
-    created_by_user_id INTEGER,
-    created_at TEXT,
-    updated_at TEXT,
-    FOREIGN KEY(created_by_user_id) REFERENCES users(id)
-);
-
--- users table -- and Authehtication scaffold
 CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     email TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     name TEXT,
     user_type TEXT NOT NULL DEFAULT 'consultant',
+
     created_at TEXT,
     updated_at TEXT,
+
     email_verified_at TEXT,
     disabled_at TEXT,
     last_login_at TEXT,
-    mfa_enabled INTEGER NOT NULL DEFAULT 0,
+
+    mfa_enabled BOOLEAN NOT NULL DEFAULT false,
     mfa_secret_encrypted TEXT,
     password_changed_at TEXT,
-    current_organization_id INTEGER,
-    FOREIGN KEY(current_organization_id) REFERENCES organizations(id)
+
+    current_organization_id BIGINT
 );
+
+-- ORGANIZATIONS
+
+CREATE TABLE IF NOT EXISTS organizations (
+    id BIGSERIAL PRIMARY KEY,
+
+    name TEXT NOT NULL,
+    slug TEXT UNIQUE,
+
+    created_by_user_id BIGINT REFERENCES users(id),
+
+    created_at TEXT,
+    updated_at TEXT
+);
+
+ALTER TABLE users
+ADD CONSTRAINT fk_users_current_org
+FOREIGN KEY(current_organization_id)
+REFERENCES organizations(id);
+
+-- EMAIL VERIFICATION TOKENS
 
 CREATE TABLE IF NOT EXISTS email_verification_tokens (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER NOT NULL,
-  token_hash TEXT NOT NULL UNIQUE,
-  expires_at TEXT NOT NULL,
-  used_at TEXT,
-  created_at TEXT NOT NULL,
-  FOREIGN KEY(user_id) REFERENCES users(id)
-);
+    id BIGSERIAL PRIMARY KEY,
 
-CREATE TABLE IF NOT EXISTS auth_sessions (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER NOT NULL,
-  token_jti TEXT NOT NULL UNIQUE,
-  revoked_at TEXT,
-  expires_at TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  last_seen_at TEXT,
-  FOREIGN KEY(user_id) REFERENCES users(id)
-);
+    user_id BIGINT NOT NULL,
 
-CREATE TABLE  IF NOT EXISTS auth_attempts (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  email TEXT,
-  ip_address TEXT,
-  action TEXT NOT NULL,
-  success INTEGER NOT NULL,
-  created_at TEXT NOT NULL
-);
+    token_hash TEXT NOT NULL UNIQUE,
 
-CREATE TABLE IF NOT EXISTS audit_events (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  actor_user_id INTEGER,
-  event_type TEXT NOT NULL,
-  resource_type TEXT,
-  resource_id TEXT,
-  metadata_json TEXT,
-  ip_address TEXT,
-  user_agent TEXT,
-  created_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS oauth_accounts (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER NOT NULL,
-  provider TEXT NOT NULL,
-  provider_user_id TEXT NOT NULL,
-  provider_email TEXT,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  UNIQUE(provider, provider_user_id),
-  FOREIGN KEY(user_id) REFERENCES users(id)
-);
-
--- organization members table
-CREATE TABLE IF NOT EXISTS organization_members (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    organization_id INTEGER NOT NULL,
-    user_id INTEGER NOT NULL,
-    role TEXT NOT NULL DEFAULT 'viewer',
-    status TEXT NOT NULL DEFAULT 'active',
-    created_at TEXT,
-    updated_at TEXT,
-    FOREIGN KEY(organization_id) REFERENCES organizations(id),
-    FOREIGN KEY(user_id) REFERENCES users(id),
-    UNIQUE(organization_id, user_id)
-);
- 
-CREATE TABLE IF NOT EXISTS organization_invitations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    organization_id INTEGER NOT NULL,
-    email TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'member',
-    token TEXT NOT NULL UNIQUE,
-    status TEXT NOT NULL DEFAULT 'pending',
-    invited_by_user_id INTEGER,
-    accepted_by_user_id INTEGER,
-    expires_at TEXT NOT NULL,
-    accepted_at TEXT,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(organization_id, email, status)
-);
--- password reset tokens table
-CREATE TABLE IF NOT EXISTS password_reset_tokens (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    token_hash TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     used_at TEXT,
     created_at TEXT NOT NULL,
+
     FOREIGN KEY(user_id) REFERENCES users(id)
 );
 
--- clients table
+-- AUTH SESSIONS
+
+CREATE TABLE IF NOT EXISTS auth_sessions (
+    id BIGSERIAL PRIMARY KEY,
+
+    user_id BIGINT NOT NULL,
+
+    token_jti TEXT NOT NULL UNIQUE,
+
+    revoked_at TEXT,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    last_seen_at TEXT,
+
+    FOREIGN KEY(user_id) REFERENCES users(id)
+);
+
+-- AUTH ATTEMPTS
+
+CREATE TABLE IF NOT EXISTS auth_attempts (
+    id BIGSERIAL PRIMARY KEY,
+
+    email TEXT,
+    ip_address TEXT,
+
+    action TEXT NOT NULL,
+    success INTEGER NOT NULL,
+
+    created_at TEXT NOT NULL
+);
+
+-- AUDIT EVENTS
+
+CREATE TABLE IF NOT EXISTS audit_events (
+    id BIGSERIAL PRIMARY KEY,
+
+    actor_user_id BIGINT,
+
+    event_type TEXT NOT NULL,
+
+    resource_type TEXT,
+    resource_id TEXT,
+
+    metadata_json TEXT,
+
+    ip_address TEXT,
+    user_agent TEXT,
+
+    created_at TEXT NOT NULL
+);
+
+-- OAUTH
+
+CREATE TABLE IF NOT EXISTS oauth_accounts (
+    id BIGSERIAL PRIMARY KEY,
+
+    user_id BIGINT NOT NULL,
+
+    provider TEXT NOT NULL,
+    provider_user_id TEXT NOT NULL,
+    provider_email TEXT,
+
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+
+    UNIQUE(provider, provider_user_id),
+
+    FOREIGN KEY(user_id) REFERENCES users(id)
+);
+
+-- ORGANIZATION MEMBERS
+
+CREATE TABLE IF NOT EXISTS organization_members (
+    id BIGSERIAL PRIMARY KEY,
+
+    organization_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+
+    role TEXT NOT NULL DEFAULT 'viewer',
+    status TEXT NOT NULL DEFAULT 'active',
+
+    created_at TEXT,
+    updated_at TEXT,
+
+    FOREIGN KEY(organization_id) REFERENCES organizations(id),
+    FOREIGN KEY(user_id) REFERENCES users(id),
+
+    UNIQUE(organization_id, user_id)
+);
+
+-- ORGANIZATION INVITATIONS
+
+CREATE TABLE IF NOT EXISTS organization_invitations (
+    id BIGSERIAL PRIMARY KEY,
+
+    organization_id BIGINT NOT NULL,
+
+    email TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'member',
+
+    token TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'pending',
+
+    invited_by_user_id BIGINT,
+    accepted_by_user_id BIGINT,
+
+    expires_at TEXT NOT NULL,
+    accepted_at TEXT,
+
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    UNIQUE(organization_id, email, status)
+);
+
+-- PASSWORD RESET TOKENS
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id BIGSERIAL PRIMARY KEY,
+
+    user_id BIGINT NOT NULL,
+
+    token_hash TEXT NOT NULL,
+
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    created_at TEXT NOT NULL,
+
+    FOREIGN KEY(user_id) REFERENCES users(id)
+);
+
+-- CLIENTS
+
 CREATE TABLE IF NOT EXISTS clients (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    organization_id INTEGER NOT NULL,
+    id BIGSERIAL PRIMARY KEY,
+
+    organization_id BIGINT NOT NULL,
+
     name TEXT NOT NULL,
     email TEXT NOT NULL,
+
     tax_id TEXT,
     phone TEXT,
     company_name TEXT,
+
     address TEXT,
     city TEXT,
     state TEXT,
     zip TEXT,
     country TEXT,
+
     created_at TEXT,
     updated_at TEXT,
+
     FOREIGN KEY(organization_id) REFERENCES organizations(id)
 );
 
--- projects table
+-- PROJECTS
+
 CREATE TABLE IF NOT EXISTS projects (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    organization_id INTEGER NOT NULL,
-    client_id INTEGER NOT NULL,
+    id BIGSERIAL PRIMARY KEY,
+
+    organization_id BIGINT NOT NULL,
+    client_id BIGINT NOT NULL,
+
     name TEXT NOT NULL,
+
     start_date TEXT,
     description TEXT,
     end_date TEXT,
+
     created_at TEXT,
     updated_at TEXT,
+
     FOREIGN KEY(organization_id) REFERENCES organizations(id),
     FOREIGN KEY(client_id) REFERENCES clients(id)
 );
 
--- contracts table
+-- CONTRACTS
+
 CREATE TABLE IF NOT EXISTS contracts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    organization_id INTEGER NOT NULL,
-    project_id INTEGER NOT NULL,
+    id BIGSERIAL PRIMARY KEY,
+
+    organization_id BIGINT NOT NULL,
+    project_id BIGINT NOT NULL,
+
     title TEXT NOT NULL,
     status TEXT NOT NULL,
+
     signed_at TEXT,
     start_date TEXT,
     end_date TEXT,
-    value REAL,
+
+    value DOUBLE PRECISION,
     currency TEXT,
+
     terms TEXT,
     notes TEXT,
     external_id TEXT,
+
     created_at TEXT NOT NULL,
     updated_at TEXT,
+
     FOREIGN KEY(organization_id) REFERENCES organizations(id),
     FOREIGN KEY(project_id) REFERENCES projects(id)
 );
 
--- invoices table
+-- INVOICES
+
 CREATE TABLE IF NOT EXISTS invoices (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    organization_id INTEGER NOT NULL,
-    contract_id INTEGER NOT NULL,
+    id BIGSERIAL PRIMARY KEY,
+
+    organization_id BIGINT NOT NULL,
+    contract_id BIGINT NOT NULL,
+
     invoice_number TEXT NOT NULL,
     status TEXT NOT NULL,
+
     issued_at TEXT,
     due_date TEXT,
-    subtotal REAL,
-    tax REAL,
-    total REAL,
+
+    subtotal DOUBLE PRECISION,
+    tax DOUBLE PRECISION,
+    total DOUBLE PRECISION,
+
     currency TEXT,
     notes TEXT,
+
     created_at TEXT NOT NULL,
     updated_at TEXT,
+
     FOREIGN KEY(organization_id) REFERENCES organizations(id),
     FOREIGN KEY(contract_id) REFERENCES contracts(id)
 );
 
--- payments table
+-- PAYMENTS
+
 CREATE TABLE IF NOT EXISTS payments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    organization_id INTEGER NOT NULL,
-    invoice_id INTEGER NOT NULL,
+    id BIGSERIAL PRIMARY KEY,
+
+    organization_id BIGINT NOT NULL,
+    invoice_id BIGINT NOT NULL,
+
     paid_at TEXT,
-    amount REAL NOT NULL,
+
+    amount DOUBLE PRECISION NOT NULL,
     currency TEXT,
     method TEXT,
     reference TEXT,
     notes TEXT,
+
     created_at TEXT NOT NULL,
     updated_at TEXT,
+
     FOREIGN KEY(organization_id) REFERENCES organizations(id),
     FOREIGN KEY(invoice_id) REFERENCES invoices(id)
 );
--- engagements table
+
+-- ENGAGEMENTS
+
 CREATE TABLE IF NOT EXISTS engagements (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    organization_id INTEGER NOT NULL,
-    project_id INTEGER NOT NULL,
+    id BIGSERIAL PRIMARY KEY,
+
+    organization_id BIGINT NOT NULL,
+    project_id BIGINT NOT NULL,
+
     engagement_type TEXT NOT NULL DEFAULT 'software',
+
     contractor_name TEXT NOT NULL,
     contractor_email TEXT NOT NULL,
+
     role TEXT NOT NULL,
     title TEXT NOT NULL,
+
     scope_of_work TEXT NOT NULL,
     deliverables TEXT,
     repo_url TEXT,
-    amount_cents INTEGER NOT NULL,
+
+    amount_cents BIGINT NOT NULL,
+
     currency TEXT NOT NULL DEFAULT 'usd',
     due_date TEXT,
+
     status TEXT NOT NULL DEFAULT 'draft',
     platform_fee_status TEXT NOT NULL DEFAULT 'pending',
-    contract_id INTEGER,
-    invoice_id INTEGER,
-    payment_id INTEGER, 
+
+    contract_id BIGINT,
+    invoice_id BIGINT,
+    payment_id BIGINT,
+
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
---engagement milestones table
+
+-- ENGAGEMENT MILESTONES
+
 CREATE TABLE IF NOT EXISTS engagement_milestones (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    engagement_id INTEGER NOT NULL,
+    id BIGSERIAL PRIMARY KEY,
+
+    engagement_id BIGINT NOT NULL,
+
     title TEXT NOT NULL,
     description TEXT,
-    amount_cents INTEGER NOT NULL DEFAULT 0,
+
+    amount_cents BIGINT NOT NULL DEFAULT 0,
+
     due_date TEXT,
+
     status TEXT NOT NULL DEFAULT 'pending',
+
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
--- engagement billing table
+
+-- ENGAGEMENT BILLING
+
 CREATE TABLE IF NOT EXISTS engagement_billing (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    engagement_id INTEGER NOT NULL,
-    organization_id INTEGER NOT NULL,
+    id BIGSERIAL PRIMARY KEY,
+
+    engagement_id BIGINT NOT NULL,
+    organization_id BIGINT NOT NULL,
+
     billing_type TEXT NOT NULL,
-    amount_cents INTEGER NOT NULL,
+
+    amount_cents BIGINT NOT NULL,
+
     currency TEXT NOT NULL DEFAULT 'usd',
+
     status TEXT NOT NULL DEFAULT 'pending',
+
     stripe_checkout_session_id TEXT,
     stripe_payment_intent_id TEXT,
+
     paid_at TEXT,
+
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- operational events table
+-- OPERATIONAL EVENTS
+
 CREATE TABLE IF NOT EXISTS operational_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    organization_id INTEGER NOT NULL,
-    actor_user_id INTEGER NULL,
+    id BIGSERIAL PRIMARY KEY,
+
+    organization_id BIGINT NOT NULL,
+    actor_user_id BIGINT,
+
     entity_type TEXT NOT NULL,
-    entity_id INTEGER NOT NULL,
+    entity_id BIGINT NOT NULL,
+
     event_type TEXT NOT NULL,
-    from_status TEXT NULL,
-    to_status TEXT NULL,
+
+    from_status TEXT,
+    to_status TEXT,
+
     metadata TEXT NOT NULL DEFAULT '{}',
+
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- PARTIES
+
 CREATE TABLE IF NOT EXISTS parties (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    organization_id INTEGER NOT NULL,
+    id BIGSERIAL PRIMARY KEY,
+
+    organization_id BIGINT NOT NULL,
+
     name TEXT NOT NULL,
     email TEXT,
+
     party_type TEXT NOT NULL,
-    is_verified INTEGER NOT NULL DEFAULT 0,
+
+    is_verified BIGINT NOT NULL DEFAULT 0,
 
     verification_status TEXT NOT NULL DEFAULT 'unverified',
     verified_at TEXT,
     verification_method TEXT,
 
-    linked_user_id INTEGER,
-    linked_client_id INTEGER,
-    linked_organization_id INTEGER,
+    linked_user_id BIGINT,
+    linked_client_id BIGINT,
+    linked_organization_id BIGINT,
 
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- OPERATIONAL AGREEMENTS
+
 CREATE TABLE IF NOT EXISTS operational_agreements (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    organization_id INTEGER NOT NULL,
-    engagement_id INTEGER,
+    id BIGSERIAL PRIMARY KEY,
+
+    organization_id BIGINT NOT NULL,
+    engagement_id BIGINT,
+
     title TEXT NOT NULL,
     agreement_type TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'draft',
+
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- AGREEMENT PAYOUT RULES
 
 CREATE TABLE IF NOT EXISTS agreement_payout_rules (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    agreement_id INTEGER NOT NULL,
-    from_party_id INTEGER NOT NULL,
-    to_party_id INTEGER NOT NULL,
+    id BIGSERIAL PRIMARY KEY,
+
+    agreement_id BIGINT NOT NULL,
+
+    from_party_id BIGINT NOT NULL,
+    to_party_id BIGINT NOT NULL,
+
     rule_type TEXT NOT NULL,
-    percent INTEGER,
-    amount_cents INTEGER,
+
+    percent BIGINT,
+    amount_cents BIGINT,
+
     trigger_event TEXT NOT NULL,
+
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- OPERATIONAL TRANSACTIONS
 
 CREATE TABLE IF NOT EXISTS operational_transactions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    organization_id INTEGER NOT NULL,
-    agreement_id INTEGER,
-    engagement_id INTEGER,
-    milestone_id INTEGER,
-    from_party_id INTEGER NOT NULL,
-    to_party_id INTEGER NOT NULL,
+    id BIGSERIAL PRIMARY KEY,
+
+    organization_id BIGINT NOT NULL,
+
+    agreement_id BIGINT,
+    engagement_id BIGINT,
+    milestone_id BIGINT,
+
+    from_party_id BIGINT NOT NULL,
+    to_party_id BIGINT NOT NULL,
+
     transaction_type TEXT NOT NULL,
-    amount_cents INTEGER NOT NULL,
+
+    amount_cents BIGINT NOT NULL,
+
     currency TEXT NOT NULL DEFAULT 'usd',
+
     status TEXT NOT NULL DEFAULT 'pending',
+
     trigger_event TEXT,
+
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- NOTIFICATIONS
 
 CREATE TABLE IF NOT EXISTS notifications (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    organization_id INTEGER NOT NULL,
-    user_id INTEGER,
+    id BIGSERIAL PRIMARY KEY,
+
+    organization_id BIGINT NOT NULL,
+    user_id BIGINT,
+
     recipient_email TEXT,
+
     notification_type TEXT NOT NULL,
+
     title TEXT NOT NULL,
     body TEXT NOT NULL,
+
     entity_type TEXT,
-    entity_id INTEGER,
+    entity_id BIGINT,
+
     read_at TEXT,
+
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- NOTIFICATION JOBS
+
 CREATE TABLE IF NOT EXISTS notification_jobs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    notification_id INTEGER,
+    id BIGSERIAL PRIMARY KEY,
+
+    notification_id BIGINT,
+
     channel TEXT NOT NULL DEFAULT 'email',
+
     status TEXT NOT NULL DEFAULT 'pending',
+
     attempts INTEGER NOT NULL DEFAULT 0,
+
     last_error TEXT,
+
     run_after TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- PARTY PAYMENT PROFILES
+
 CREATE TABLE IF NOT EXISTS party_payment_profiles (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id BIGSERIAL PRIMARY KEY,
 
-    party_id INTEGER NOT NULL UNIQUE,
-    organization_id INTEGER NOT NULL,
+    party_id BIGINT NOT NULL UNIQUE,
+    organization_id BIGINT NOT NULL,
 
-    payment_role TEXT NOT NULL, -- payer, payee, both
+    payment_role TEXT NOT NULL,
 
     stripe_customer_id TEXT,
     stripe_payment_method_id TEXT,
 
     payer_authorization_status TEXT NOT NULL DEFAULT 'not_configured',
     payer_authorized_at TEXT,
-    payer_authorization_scope TEXT, -- single_milestone, engagement, agreement
+    payer_authorization_scope TEXT,
 
     stripe_connect_account_id TEXT,
     stripe_connect_onboarding_status TEXT NOT NULL DEFAULT 'not_started',
@@ -390,39 +576,27 @@ CREATE TABLE IF NOT EXISTS party_payment_profiles (
     FOREIGN KEY(party_id) REFERENCES parties(id),
     FOREIGN KEY(organization_id) REFERENCES organizations(id)
 );
+
+-- ORGANIZATION SUBSCRIPTIONS
+
 CREATE TABLE IF NOT EXISTS organization_subscriptions (
     id BIGSERIAL PRIMARY KEY,
+
     organization_id BIGINT NOT NULL UNIQUE,
+
     subscription_status TEXT NOT NULL DEFAULT 'inactive',
     subscription_plan TEXT NOT NULL DEFAULT 'free',
+
     stripe_customer_id TEXT,
     stripe_subscription_id TEXT,
+
     current_period_start TEXT,
     current_period_end TEXT,
+
     cancel_at_period_end BOOLEAN NOT NULL DEFAULT FALSE,
+
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
     FOREIGN KEY (organization_id) REFERENCES organizations(id)
 );
-
-CREATE INDEX IF NOT EXISTS idx_org_subscriptions_org
-ON organization_subscriptions(organization_id);
-
-CREATE INDEX IF NOT EXISTS idx_org_subscriptions_status
-ON organization_subscriptions(subscription_status);
-
-CREATE INDEX IF NOT EXISTS idx_users_current_org
-ON users(current_organization_id);
-
-CREATE INDEX IF NOT EXISTS idx_org_members_user
-ON organization_members(user_id);
-
-CREATE INDEX IF NOT EXISTS idx_org_members_org
-ON organization_members(organization_id);
-
-CREATE INDEX IF NOT EXISTS idx_org_invitations_email
-ON organization_invitations(email);
-
-CREATE INDEX IF NOT EXISTS idx_org_invitations_token
-ON organization_invitations(token);
-

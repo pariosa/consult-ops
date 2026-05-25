@@ -1,26 +1,61 @@
-use actix_web::{HttpResponse, Responder, web};
+use actix_web::{HttpResponse, Responder, ResponseError, web};
 
 use crate::auth::permissions::{can_manage_transactions, can_process_transactions};
 use crate::auth_context::AuthUser;
 use crate::db::Db;
 use crate::models::operational_transaction::OperationalTransaction;
-use crate::services::email_notification_service::EmailNotificationService;
+use crate::services::authz::{require_org_member, require_org_role};
 use crate::services::event_service::EventService;
 use crate::services::notification_email_recipient_service::NotificationRecipientService;
 use crate::services::notification_service::NotificationService;
+
+async fn organization_id_for_engagement(db: &Db, engagement_id: i64) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT organization_id
+        FROM engagements
+        WHERE id = $1
+        "#,
+    )
+    .bind(engagement_id)
+    .fetch_one(db.pool.as_ref())
+    .await
+}
+
+async fn organization_id_for_transaction(db: &Db, transaction_id: i64) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT organization_id
+        FROM operational_transactions
+        WHERE id = $1
+        "#,
+    )
+    .bind(transaction_id)
+    .fetch_one(db.pool.as_ref())
+    .await
+}
 
 pub async fn list_engagement_transactions(
     db: web::Data<Db>,
     auth: AuthUser,
     path: web::Path<i64>,
 ) -> impl Responder {
+    let engagement_id = path.into_inner();
+
     if !can_process_transactions(&auth.user_type) {
         return HttpResponse::Forbidden().json(serde_json::json!({
             "error": "You do not have permission to view engagement transactions."
         }));
     }
 
-    let engagement_id = path.into_inner();
+    let organization_id = match organization_id_for_engagement(&db, engagement_id).await {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::NotFound().body("Engagement not found"),
+    };
+
+    if let Err(err) = require_org_member(db.pool.as_ref(), auth.id, organization_id).await {
+        return err.error_response();
+    }
 
     match OperationalTransaction::for_engagement(db.pool.as_ref(), engagement_id).await {
         Ok(transactions) => HttpResponse::Ok().json(transactions),
@@ -36,27 +71,19 @@ pub async fn list_organization_transactions(
     auth: AuthUser,
     path: web::Path<i64>,
 ) -> impl Responder {
+    let organization_id = path.into_inner();
+
     if !can_process_transactions(&auth.user_type) {
         return HttpResponse::Forbidden().json(serde_json::json!({
             "error": "You do not have permission to view organization transactions."
         }));
     }
 
-    let organization_id = path.into_inner();
+    if let Err(err) = require_org_member(db.pool.as_ref(), auth.id, organization_id).await {
+        return err.error_response();
+    }
 
-    let result = sqlx::query_as::<_, OperationalTransaction>(
-        r#"
-        SELECT *
-        FROM operational_transactions
-        WHERE organization_id = ?
-        ORDER BY created_at DESC
-        "#,
-    )
-    .bind(organization_id)
-    .fetch_all(db.pool.as_ref())
-    .await;
-
-    match result {
+    match OperationalTransaction::for_organization(db.pool.as_ref(), organization_id).await {
         Ok(transactions) => HttpResponse::Ok().json(transactions),
         Err(err) => {
             eprintln!("list_organization_transactions error: {:?}", err);
@@ -67,21 +94,28 @@ pub async fn list_organization_transactions(
 
 async fn apply_transaction_status(
     db: web::Data<Db>,
+    auth: AuthUser,
     transaction_id: i64,
     next_status: &str,
     event_type: &str,
 ) -> HttpResponse {
-    let existing = match sqlx::query_as::<_, OperationalTransaction>(
-        r#"
-        SELECT *
-        FROM operational_transactions
-        WHERE id = ?
-        "#,
+    let organization_id = match organization_id_for_transaction(&db, transaction_id).await {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::NotFound().body("Transaction not found"),
+    };
+
+    if let Err(err) = require_org_role(
+        db.pool.as_ref(),
+        auth.id,
+        organization_id,
+        &["owner", "admin"],
     )
-    .bind(transaction_id)
-    .fetch_one(db.pool.as_ref())
     .await
     {
+        return err.error_response();
+    }
+
+    let existing = match OperationalTransaction::find(db.pool.as_ref(), transaction_id).await {
         Ok(transaction) => transaction,
         Err(err) => {
             eprintln!("find operational transaction error: {:?}", err);
@@ -119,7 +153,7 @@ async fn apply_transaction_status(
     let _ = EventService::record_event(
         db.pool.as_ref(),
         updated.organization_id,
-        None,
+        Some(auth.id),
         "operational_transaction",
         updated.id,
         event_type,
@@ -133,7 +167,7 @@ async fn apply_transaction_status(
         let _ = EventService::record_event(
             db.pool.as_ref(),
             updated.organization_id,
-            None,
+            Some(auth.id),
             "engagement",
             engagement_id,
             event_type,
@@ -143,7 +177,32 @@ async fn apply_transaction_status(
         )
         .await;
     }
-    if next_status == "paid" {
+
+    if next_status == "paid" || next_status == "failed" {
+        let notification_type = if next_status == "paid" {
+            "transaction_paid"
+        } else {
+            "transaction_failed"
+        };
+
+        let title = if next_status == "paid" {
+            "Transaction marked paid"
+        } else {
+            "Transaction failed"
+        };
+
+        let body = if next_status == "paid" {
+            format!(
+                "A transaction for ${:.2} was marked paid.",
+                updated.amount_cents as f64 / 100.0
+            )
+        } else {
+            format!(
+                "A transaction for ${:.2} failed.",
+                updated.amount_cents as f64 / 100.0
+            )
+        };
+
         match NotificationRecipientService::transaction_party_emails(db.pool.as_ref(), updated.id)
             .await
         {
@@ -153,56 +212,22 @@ async fn apply_transaction_status(
                         db.pool.as_ref(),
                         updated.organization_id,
                         email,
-                        "transaction_paid",
-                        "Transaction marked paid",
-                        &format!(
-                            "A transaction for ${:.2} was marked paid.",
-                            updated.amount_cents as f64 / 100.0
-                        ),
+                        notification_type,
+                        title,
+                        &body,
                         Some("operational_transaction"),
                         Some(updated.id),
                     )
                     .await
                     {
-                        eprintln!("transaction paid email error: {:?}", err);
+                        eprintln!("transaction notification error: {:?}", err);
                     }
                 }
             }
-            Err(err) => {
-                eprintln!("transaction paid recipient lookup error: {:?}", err);
-            }
+            Err(err) => eprintln!("transaction recipient lookup error: {:?}", err),
         }
     }
-    if next_status == "failed" {
-        match NotificationRecipientService::transaction_party_emails(db.pool.as_ref(), updated.id)
-            .await
-        {
-            Ok(emails) => {
-                for email in emails {
-                    if let Err(err) = NotificationService::notify_email(
-                        db.pool.as_ref(),
-                        updated.organization_id,
-                        email,
-                        "transaction_failed",
-                        "Transaction failed",
-                        &format!(
-                            "A transaction for ${:.2} failed.",
-                            updated.amount_cents as f64 / 100.0
-                        ),
-                        Some("operational_transaction"),
-                        Some(updated.id),
-                    )
-                    .await
-                    {
-                        eprintln!("transaction failed notification error: {:?}", err);
-                    }
-                }
-            }
-            Err(err) => {
-                eprintln!("transaction failed recipient lookup error: {:?}", err);
-            }
-        }
-    }
+
     HttpResponse::Ok().json(updated)
 }
 
@@ -219,6 +244,7 @@ pub async fn mark_transaction_processing(
 
     apply_transaction_status(
         db,
+        auth,
         path.into_inner(),
         "processing",
         "OperationalTransactionProcessing",
@@ -237,7 +263,14 @@ pub async fn mark_transaction_paid(
         }));
     }
 
-    apply_transaction_status(db, path.into_inner(), "paid", "OperationalTransactionPaid").await
+    apply_transaction_status(
+        db,
+        auth,
+        path.into_inner(),
+        "paid",
+        "OperationalTransactionPaid",
+    )
+    .await
 }
 
 pub async fn mark_transaction_failed(
@@ -253,6 +286,7 @@ pub async fn mark_transaction_failed(
 
     apply_transaction_status(
         db,
+        auth,
         path.into_inner(),
         "failed",
         "OperationalTransactionFailed",
@@ -273,6 +307,7 @@ pub async fn cancel_transaction(
 
     apply_transaction_status(
         db,
+        auth,
         path.into_inner(),
         "cancelled",
         "OperationalTransactionCancelled",

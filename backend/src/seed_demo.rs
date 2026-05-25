@@ -10,6 +10,25 @@ use crate::models::{Client, Contract, Invoice, Payment, Project};
 
 use chrono::{Duration, Utc};
 
+fn slugify(name: &str) -> String {
+    let slug = name
+        .trim()
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+
+    if slug.is_empty() {
+        format!("organization-{}", Utc::now().timestamp())
+    } else {
+        slug
+    }
+}
+
 pub async fn seed_demo_data(db: &Db) -> sqlx::Result<()> {
     let now = Utc::now().to_rfc3339();
     let demo_password = hash_password("DemoPass123!").expect("Failed to hash demo password");
@@ -163,7 +182,6 @@ pub async fn seed_demo_data(db: &Db) -> sqlx::Result<()> {
             total: Some(50000.0),
             currency: Some("USD".to_string()),
             notes: Some("Milestone 1: Site survey and controls replacement.".to_string()),
-            created_at: now.clone(),
         },
     )
     .await?;
@@ -321,7 +339,6 @@ pub async fn seed_demo_data(db: &Db) -> sqlx::Result<()> {
             total: Some(13375.0),
             currency: Some("USD".to_string()),
             notes: Some("Phase 1 ecommerce catalog sync completed.".to_string()),
-            created_at: now.clone(),
         },
     )
     .await?;
@@ -344,34 +361,38 @@ pub async fn seed_demo_data(db: &Db) -> sqlx::Result<()> {
 // =====================================================
 // HELPERS
 // =====================================================
-
 async fn get_or_create_org(db: &Db, name: &str) -> sqlx::Result<i64> {
     if let Some(id) =
-        sqlx::query_scalar::<_, i64>("SELECT id FROM organizations WHERE name = ? LIMIT 1")
+        sqlx::query_scalar::<_, i64>("SELECT id FROM organizations WHERE name = $1 LIMIT 1")
             .bind(name)
-            .fetch_optional(&*db.pool)
+            .fetch_optional(db.pool.as_ref())
             .await?
     {
         return Ok(id);
     }
 
     let now = Utc::now().to_rfc3339();
+    let slug = slugify(name);
 
-    let rec = sqlx::query(
+    sqlx::query_scalar::<_, i64>(
         r#"
-        INSERT INTO organizations (name, created_at, updated_at)
-        VALUES (?, ?, ?)
+        INSERT INTO organizations (
+            name,
+            slug,
+            created_at,
+            updated_at
+        )
+        VALUES ($1, $2, $3, $4)
+        RETURNING id
         "#,
     )
     .bind(name)
+    .bind(slug)
     .bind(&now)
     .bind(&now)
-    .execute(&*db.pool)
-    .await?;
-
-    Ok(rec.last_insert_rowid())
+    .fetch_one(db.pool.as_ref())
+    .await
 }
-
 async fn create_user_and_membership(
     db: &Db,
     email: &str,
@@ -380,48 +401,83 @@ async fn create_user_and_membership(
     role: &str,
     organization_id: i64,
     password_hash: &str,
-) -> sqlx::Result<()> {
+) -> sqlx::Result<i64> {
+    let now = Utc::now().to_rfc3339();
+    let normalized_email = email.trim().to_lowercase();
+
     let user_id = if let Some(id) =
-        sqlx::query_scalar::<_, i64>("SELECT id FROM users WHERE email = ? LIMIT 1")
-            .bind(email)
-            .fetch_optional(&*db.pool)
+        sqlx::query_scalar::<_, i64>("SELECT id FROM users WHERE lower(email) = lower($1) LIMIT 1")
+            .bind(&normalized_email)
+            .fetch_optional(db.pool.as_ref())
             .await?
     {
+        sqlx::query(
+            r#"
+            UPDATE users
+            SET
+                name = $1,
+                user_type = $2,
+                password_hash = $3,
+                email_verified_at = $4,
+                updated_at = $5
+            WHERE id = $6
+            "#,
+        )
+        .bind(name)
+        .bind(user_type)
+        .bind(password_hash)
+        .bind(&now)
+        .bind(&now)
+        .bind(id)
+        .execute(db.pool.as_ref())
+        .await?;
+
         id
     } else {
-        let now = Utc::now().to_rfc3339();
-
-        let rec = sqlx::query(
+        sqlx::query_scalar::<_, i64>(
             r#"
-    INSERT INTO users
-    (email, password_hash, name, user_type, email_verified_at, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    "#,
+            INSERT INTO users (
+                email,
+                password_hash,
+                name,
+                user_type,
+                email_verified_at,
+                current_organization_id,
+                created_at,
+                updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING id
+            "#,
         )
-        .bind(email)
+        .bind(&normalized_email)
         .bind(password_hash)
         .bind(name)
         .bind(user_type)
-        .bind(&now) // email_verified_at
-        .bind(&now) // created_at
-        .bind(&now) // updated_at
-        .execute(&*db.pool)
-        .await?;
-        rec.last_insert_rowid()
+        .bind(&now)
+        .bind(organization_id)
+        .bind(&now)
+        .bind(&now)
+        .fetch_one(db.pool.as_ref())
+        .await?
     };
-
-    let now = Utc::now().to_rfc3339();
 
     sqlx::query(
         r#"
-        INSERT INTO organization_members
-            (organization_id, user_id, role, status, created_at, updated_at)
-        VALUES (?, ?, ?, 'active', ?, ?)
+        INSERT INTO organization_members (
+            organization_id,
+            user_id,
+            role,
+            status,
+            created_at,
+            updated_at
+        )
+        VALUES ($1, $2, $3, 'active', $4, $5)
         ON CONFLICT(organization_id, user_id)
         DO UPDATE SET
-        role = excluded.role,
-        status = 'active',
-        updated_at = excluded.updated_at
+            role = excluded.role,
+            status = 'active',
+            updated_at = excluded.updated_at
         "#,
     )
     .bind(organization_id)
@@ -429,12 +485,25 @@ async fn create_user_and_membership(
     .bind(role)
     .bind(&now)
     .bind(&now)
-    .execute(&*db.pool)
+    .execute(db.pool.as_ref())
     .await?;
 
-    Ok(())
-}
+    sqlx::query(
+        r#"
+        UPDATE users
+        SET current_organization_id = COALESCE(current_organization_id, $1),
+            updated_at = $2
+        WHERE id = $3
+        "#,
+    )
+    .bind(organization_id)
+    .bind(&now)
+    .bind(user_id)
+    .execute(db.pool.as_ref())
+    .await?;
 
+    Ok(user_id)
+}
 async fn create_client_if_missing(db: &Db, payload: CreateClient) -> sqlx::Result<Client> {
     let all = Client::all(db).await?;
 
@@ -483,7 +552,7 @@ async fn create_invoice_if_missing(db: &Db, payload: CreateInvoice) -> sqlx::Res
         return Ok(existing);
     }
 
-    Invoice::create(db, payload).await
+    Invoice::create(db.pool.as_ref(), payload).await
 }
 
 async fn create_payment_if_missing(
@@ -532,45 +601,60 @@ async fn create_platform_user(
     password_hash: &str,
 ) -> sqlx::Result<i64> {
     let now = Utc::now().to_rfc3339();
+    let normalized_email = email.trim().to_lowercase();
 
-    if let Some(id) = sqlx::query_scalar::<_, i64>("SELECT id FROM users WHERE email = ? LIMIT 1")
-        .bind(email)
-        .fetch_optional(&*db.pool)
-        .await?
+    if let Some(id) =
+        sqlx::query_scalar::<_, i64>("SELECT id FROM users WHERE lower(email) = lower($1) LIMIT 1")
+            .bind(&normalized_email)
+            .fetch_optional(db.pool.as_ref())
+            .await?
     {
         sqlx::query(
             r#"
-            UPDATE users
-            SET name = ?, user_type = ?, updated_at = ?
-            WHERE id = ?
+                UPDATE users
+                SET
+                    name = $1,
+                    user_type = $2,
+                    password_hash = $3,
+                    email_verified_at = $4,
+                    updated_at = $5
+                WHERE id = $6
             "#,
         )
         .bind(name)
         .bind(user_type)
+        .bind(password_hash)
+        .bind(&now)
         .bind(&now)
         .bind(id)
-        .execute(&*db.pool)
+        .execute(db.pool.as_ref())
         .await?;
 
         return Ok(id);
     }
 
-    let rec = sqlx::query(
+    sqlx::query_scalar::<_, i64>(
         r#"
-    INSERT INTO users
-    (email, password_hash, name, user_type, email_verified_at, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    "#,
+        INSERT INTO users (
+            email,
+            password_hash,
+            name,
+            user_type,
+            email_verified_at,
+            created_at,
+            updated_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id
+        "#,
     )
-    .bind(email)
+    .bind(&normalized_email)
     .bind(password_hash)
     .bind(name)
     .bind(user_type)
-    .bind(&now) // email_verified_at
-    .bind(&now) // created_at
-    .bind(&now) // updated_at
-    .execute(&*db.pool)
-    .await?;
-
-    Ok(rec.last_insert_rowid())
+    .bind(&now)
+    .bind(&now)
+    .bind(&now)
+    .fetch_one(db.pool.as_ref())
+    .await
 }

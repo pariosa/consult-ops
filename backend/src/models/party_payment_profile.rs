@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, Result as SqlxResult, SqlitePool};
+use sqlx::{FromRow, PgPool, Result as SqlxResult};
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct PartyPaymentProfile {
@@ -30,12 +30,12 @@ pub struct UpsertPartyPaymentProfile {
 }
 
 impl PartyPaymentProfile {
-    pub async fn find_by_party(db: &SqlitePool, party_id: i64) -> SqlxResult<Option<Self>> {
+    pub async fn find_by_party(db: &PgPool, party_id: i64) -> SqlxResult<Option<Self>> {
         sqlx::query_as::<_, Self>(
             r#"
             SELECT *
             FROM party_payment_profiles
-            WHERE party_id = ?
+            WHERE party_id = $1
             LIMIT 1
             "#,
         )
@@ -44,8 +44,31 @@ impl PartyPaymentProfile {
         .await
     }
 
+    pub async fn find_by_party_for_user(
+        db: &PgPool,
+        party_id: i64,
+        user_id: i64,
+    ) -> SqlxResult<Option<Self>> {
+        sqlx::query_as::<_, Self>(
+            r#"
+            SELECT ppp.*
+            FROM party_payment_profiles ppp
+            JOIN organization_members om
+              ON om.organization_id = ppp.organization_id
+            WHERE ppp.party_id = $1
+              AND om.user_id = $2
+              AND om.status = 'active'
+            LIMIT 1
+            "#,
+        )
+        .bind(party_id)
+        .bind(user_id)
+        .fetch_optional(db)
+        .await
+    }
+
     pub async fn upsert_basic(
-        db: &SqlitePool,
+        db: &PgPool,
         party_id: i64,
         organization_id: i64,
         payment_role: &str,
@@ -61,11 +84,18 @@ impl PartyPaymentProfile {
                 created_at,
                 updated_at
             )
-            VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
+            VALUES (
+                $1,
+                $2,
+                $3,
+                $4,
+                CURRENT_TIMESTAMP,
+                CURRENT_TIMESTAMP
+            )
             ON CONFLICT(party_id) DO UPDATE SET
                 payment_role = excluded.payment_role,
                 payer_authorization_scope = excluded.payer_authorization_scope,
-                updated_at = datetime('now')
+                updated_at = CURRENT_TIMESTAMP
             RETURNING *
             "#,
         )
@@ -78,19 +108,20 @@ impl PartyPaymentProfile {
     }
 
     pub async fn mark_payout_ready(
-        db: &SqlitePool,
+        db: &PgPool,
         party_id: i64,
         stripe_connect_account_id: String,
     ) -> SqlxResult<Self> {
         sqlx::query_as::<_, Self>(
             r#"
             UPDATE party_payment_profiles
-            SET stripe_connect_account_id = ?,
+            SET
+                stripe_connect_account_id = $1,
                 stripe_connect_onboarding_status = 'complete',
                 payout_status = 'ready',
-                payout_verified_at = datetime('now'),
-                updated_at = datetime('now')
-            WHERE party_id = ?
+                payout_verified_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE party_id = $2
             RETURNING *
             "#,
         )
@@ -101,7 +132,7 @@ impl PartyPaymentProfile {
     }
 
     pub async fn mark_payer_authorized(
-        db: &SqlitePool,
+        db: &PgPool,
         party_id: i64,
         stripe_customer_id: String,
         stripe_payment_method_id: String,
@@ -110,19 +141,77 @@ impl PartyPaymentProfile {
         sqlx::query_as::<_, Self>(
             r#"
             UPDATE party_payment_profiles
-            SET stripe_customer_id = ?,
-                stripe_payment_method_id = ?,
+            SET
+                stripe_customer_id = $1,
+                stripe_payment_method_id = $2,
                 payer_authorization_status = 'authorized',
-                payer_authorized_at = datetime('now'),
-                payer_authorization_scope = ?,
-                updated_at = datetime('now')
-            WHERE party_id = ?
+                payer_authorized_at = CURRENT_TIMESTAMP,
+                payer_authorization_scope = $3,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE party_id = $4
             RETURNING *
             "#,
         )
         .bind(stripe_customer_id)
         .bind(stripe_payment_method_id)
         .bind(scope)
+        .bind(party_id)
+        .fetch_one(db)
+        .await
+    }
+
+    pub async fn mark_connect_onboarding_started(
+        db: &PgPool,
+        party_id: i64,
+        stripe_connect_account_id: String,
+    ) -> SqlxResult<Self> {
+        sqlx::query_as::<_, Self>(
+            r#"
+            UPDATE party_payment_profiles
+            SET
+                stripe_connect_account_id = $1,
+                stripe_connect_onboarding_status = 'started',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE party_id = $2
+            RETURNING *
+            "#,
+        )
+        .bind(stripe_connect_account_id)
+        .bind(party_id)
+        .fetch_one(db)
+        .await
+    }
+
+    pub async fn mark_payout_not_ready(db: &PgPool, party_id: i64) -> SqlxResult<Self> {
+        sqlx::query_as::<_, Self>(
+            r#"
+            UPDATE party_payment_profiles
+            SET
+                payout_status = 'not_ready',
+                payout_verified_at = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE party_id = $1
+            RETURNING *
+            "#,
+        )
+        .bind(party_id)
+        .fetch_one(db)
+        .await
+    }
+
+    pub async fn revoke_payer_authorization(db: &PgPool, party_id: i64) -> SqlxResult<Self> {
+        sqlx::query_as::<_, Self>(
+            r#"
+            UPDATE party_payment_profiles
+            SET
+                payer_authorization_status = 'revoked',
+                payer_authorized_at = NULL,
+                payer_authorization_scope = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE party_id = $1
+            RETURNING *
+            "#,
+        )
         .bind(party_id)
         .fetch_one(db)
         .await

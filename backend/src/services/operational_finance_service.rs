@@ -1,5 +1,5 @@
 use serde::Serialize;
-use sqlx::SqlitePool;
+use sqlx::{PgPool, Row};
 
 #[derive(Debug, Serialize)]
 pub struct OrganizationFinanceSummary {
@@ -27,18 +27,20 @@ pub struct OperationalFinanceService;
 
 impl OperationalFinanceService {
     pub async fn organization_summary(
-        pool: &SqlitePool,
+        pool: &PgPool,
         organization_id: i64,
     ) -> Result<OrganizationFinanceSummary, String> {
-        let rows = sqlx::query!(
+        let rows = sqlx::query(
             r#"
-            SELECT status as "status!", COALESCE(SUM(amount_cents), 0) as "amount!: i64"
+            SELECT
+                status,
+                COALESCE(SUM(amount_cents), 0)::BIGINT AS amount
             FROM operational_transactions
             WHERE organization_id = $1
             GROUP BY status
             "#,
-            organization_id
         )
+        .bind(organization_id)
         .fetch_all(pool)
         .await
         .map_err(|err| err.to_string())?;
@@ -54,14 +56,17 @@ impl OperationalFinanceService {
         };
 
         for row in rows {
-            summary.total_obligations_cents += row.amount;
+            let status: String = row.try_get("status").map_err(|err| err.to_string())?;
+            let amount: i64 = row.try_get("amount").map_err(|err| err.to_string())?;
 
-            match row.status.as_str() {
-                "pending" => summary.pending_cents = row.amount,
-                "processing" => summary.processing_cents = row.amount,
-                "paid" => summary.paid_cents = row.amount,
-                "failed" => summary.failed_cents = row.amount,
-                "cancelled" => summary.cancelled_cents = row.amount,
+            summary.total_obligations_cents += amount;
+
+            match status.as_str() {
+                "pending" => summary.pending_cents = amount,
+                "processing" => summary.processing_cents = amount,
+                "paid" => summary.paid_cents = amount,
+                "failed" => summary.failed_cents = amount,
+                "cancelled" => summary.cancelled_cents = amount,
                 _ => {}
             }
         }
@@ -70,14 +75,14 @@ impl OperationalFinanceService {
     }
 
     pub async fn party_balances(
-        pool: &SqlitePool,
+        pool: &PgPool,
         organization_id: i64,
     ) -> Result<Vec<PartyBalanceSummary>, String> {
         sqlx::query_as::<_, PartyBalanceSummary>(
             r#"
             SELECT
-                p.id as party_id,
-                p.name as party_name,
+                p.id AS party_id,
+                p.name AS party_name,
                 p.party_type,
                 p.is_verified,
 
@@ -87,7 +92,7 @@ impl OperationalFinanceService {
                     WHERE t.organization_id = p.organization_id
                       AND t.from_party_id = p.id
                       AND t.status IN ('pending', 'processing')
-                ), 0) as payable_cents,
+                ), 0)::BIGINT AS payable_cents,
 
                 COALESCE((
                     SELECT SUM(t.amount_cents)
@@ -95,27 +100,47 @@ impl OperationalFinanceService {
                     WHERE t.organization_id = p.organization_id
                       AND t.to_party_id = p.id
                       AND t.status IN ('pending', 'processing')
-                ), 0) as receivable_cents,
+                ), 0)::BIGINT AS receivable_cents,
 
-                COALESCE((
-                    SELECT SUM(t.amount_cents)
-                    FROM operational_transactions t
-                    WHERE t.organization_id = p.organization_id
-                      AND t.to_party_id = p.id
-                      AND t.status IN ('pending', 'processing')
-                ), 0)
-                -
-                COALESCE((
-                    SELECT SUM(t.amount_cents)
-                    FROM operational_transactions t
-                    WHERE t.organization_id = p.organization_id
-                      AND t.from_party_id = p.id
-                      AND t.status IN ('pending', 'processing')
-                ), 0) as net_cents
+                (
+                    COALESCE((
+                        SELECT SUM(t.amount_cents)
+                        FROM operational_transactions t
+                        WHERE t.organization_id = p.organization_id
+                          AND t.to_party_id = p.id
+                          AND t.status IN ('pending', 'processing')
+                    ), 0)
+                    -
+                    COALESCE((
+                        SELECT SUM(t.amount_cents)
+                        FROM operational_transactions t
+                        WHERE t.organization_id = p.organization_id
+                          AND t.from_party_id = p.id
+                          AND t.status IN ('pending', 'processing')
+                    ), 0)
+                )::BIGINT AS net_cents
 
             FROM parties p
-            WHERE p.organization_id = ?
-            ORDER BY ABS(net_cents) DESC
+            WHERE p.organization_id = $1
+            ORDER BY ABS(
+                (
+                    COALESCE((
+                        SELECT SUM(t.amount_cents)
+                        FROM operational_transactions t
+                        WHERE t.organization_id = p.organization_id
+                          AND t.to_party_id = p.id
+                          AND t.status IN ('pending', 'processing')
+                    ), 0)
+                    -
+                    COALESCE((
+                        SELECT SUM(t.amount_cents)
+                        FROM operational_transactions t
+                        WHERE t.organization_id = p.organization_id
+                          AND t.from_party_id = p.id
+                          AND t.status IN ('pending', 'processing')
+                    ), 0)
+                )
+            ) DESC
             "#,
         )
         .bind(organization_id)

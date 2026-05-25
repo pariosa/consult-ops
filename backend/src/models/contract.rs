@@ -50,15 +50,22 @@ pub struct CreateContract {
 
     pub created_at: String,
 }
+
 impl Contract {
     pub async fn all(db: &Db) -> SqlxResult<Vec<Self>> {
-        sqlx::query_as::<_, Contract>("SELECT * FROM contracts ORDER BY created_at DESC")
-            .fetch_all(&*db.pool)
-            .await
+        sqlx::query_as::<_, Contract>(
+            r#"
+            SELECT *
+            FROM contracts
+            ORDER BY created_at DESC
+            "#,
+        )
+        .fetch_all(&*db.pool)
+        .await
     }
 
     pub async fn create(db: &Db, contract: CreateContract) -> SqlxResult<Self> {
-        let rec = sqlx::query(
+        sqlx::query_as::<_, Contract>(
             r#"
             INSERT INTO contracts (
                 organization_id,
@@ -75,7 +82,12 @@ impl Contract {
                 external_id,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
+            VALUES (
+                $1, $2, $3, $4, $5, $6,
+                $7, $8, $9, $10, $11,
+                $12, $13
+            )
+            RETURNING *
             "#,
         )
         .bind(contract.organization_id)
@@ -91,24 +103,20 @@ impl Contract {
         .bind(&contract.notes)
         .bind(&contract.external_id)
         .bind(&contract.created_at)
-        .execute(&*db.pool)
-        .await?;
-
-        Ok(Contract {
-            id: rec.last_insert_rowid(),
-            organization_id: contract.organization_id,
-            project_id: contract.project_id,
-            title: contract.title,
-            status: contract.status,
-            signed_at: contract.signed_at,
-            start_date: contract.start_date,
-            end_date: contract.end_date,
-            value: contract.value,
-            currency: contract.currency,
-            terms: contract.terms,
-            notes: contract.notes,
-            external_id: contract.external_id,
-            created_at: contract.created_at,
-        })
+        .fetch_one(&*db.pool)
+        .await
+    }
+    pub async fn for_organization(db: &Db, organization_id: i64) -> SqlxResult<Vec<Self>> {
+        sqlx::query_as::<_, Contract>(
+            r#"
+        SELECT *
+        FROM contracts
+        WHERE organization_id = $1
+        ORDER BY created_at DESC
+        "#,
+        )
+        .bind(organization_id)
+        .fetch_all(db.pool.as_ref())
+        .await
     }
 }

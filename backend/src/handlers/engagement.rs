@@ -1,25 +1,88 @@
+use crate::auth_context::AuthUser;
 use crate::db::Db;
 use crate::domain::engagement_state::{EngagementEvent, EngagementStatus};
 use crate::models::engagement::{CreateEngagement, CreateEngagementRequest, Engagement};
+use crate::services::authz::{require_org_member, require_org_role};
 use crate::services::email_notification_service::EmailNotificationService;
 use crate::services::event_service::EventService;
 use crate::services::notification_email_recipient_service::NotificationRecipientService;
 use crate::services::notification_service::NotificationService;
 use crate::services::operations_kernel_service::OperationsKernelService;
-use actix_web::{HttpResponse, Responder, web};
-#[derive(Debug, serde::Serialize)]
+use actix_web::{HttpResponse, Responder, ResponseError, web};
+
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
 struct EngagementLifecycleResponse {
     id: i64,
     organization_id: i64,
     project_id: i64,
     status: String,
 }
-pub async fn list_for_project(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
+
+#[derive(Debug, sqlx::FromRow)]
+struct EngagementNotificationContext {
+    title: String,
+    organization_id: i64,
+}
+
+async fn organization_id_for_project(db: &Db, project_id: i64) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT organization_id
+        FROM projects
+        WHERE id = $1
+        "#,
+    )
+    .bind(project_id)
+    .fetch_one(db.pool.as_ref())
+    .await
+}
+
+async fn organization_id_for_engagement(db: &Db, engagement_id: i64) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT organization_id
+        FROM engagements
+        WHERE id = $1
+        "#,
+    )
+    .bind(engagement_id)
+    .fetch_one(db.pool.as_ref())
+    .await
+}
+
+async fn notification_context_for_engagement(
+    db: &Db,
+    engagement_id: i64,
+) -> Result<EngagementNotificationContext, sqlx::Error> {
+    sqlx::query_as::<_, EngagementNotificationContext>(
+        r#"
+        SELECT title, organization_id
+        FROM engagements
+        WHERE id = $1
+        "#,
+    )
+    .bind(engagement_id)
+    .fetch_one(db.pool.as_ref())
+    .await
+}
+
+pub async fn list_for_project(
+    db: web::Data<Db>,
+    auth: AuthUser,
+    path: web::Path<i64>,
+) -> impl Responder {
     let project_id = path.into_inner();
 
-    println!("Loading engagements for project_id: {}", project_id);
+    let organization_id = match organization_id_for_project(&db, project_id).await {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::NotFound().body("Project not found"),
+    };
 
-    match Engagement::for_project(&db.pool, project_id).await {
+    if let Err(err) = require_org_member(db.pool.as_ref(), auth.id, organization_id).await {
+        return err.error_response();
+    }
+
+    match Engagement::for_project(db.pool.as_ref(), project_id).await {
         Ok(items) => HttpResponse::Ok().json(items),
         Err(err) => {
             eprintln!("Engagement::for_project error: {:?}", err);
@@ -30,24 +93,28 @@ pub async fn list_for_project(db: web::Data<Db>, path: web::Path<i64>) -> impl R
 
 pub async fn create_for_project(
     db: web::Data<Db>,
+    auth: AuthUser,
     path: web::Path<i64>,
     payload: web::Json<CreateEngagementRequest>,
 ) -> impl Responder {
     let project_id = path.into_inner();
     let input = payload.into_inner();
 
-    let organization_id_result: Result<i64, sqlx::Error> =
-        sqlx::query_scalar("SELECT organization_id FROM projects WHERE id = ?")
-            .bind(project_id)
-            .fetch_one(db.pool.as_ref())
-            .await;
-    let organization_id = match organization_id_result {
+    let organization_id = match organization_id_for_project(&db, project_id).await {
         Ok(id) => id,
-        Err(err) => {
-            eprintln!("Could not find organization for project: {:?}", err);
-            return HttpResponse::BadRequest().body("Invalid project_id");
-        }
+        Err(_) => return HttpResponse::NotFound().body("Project not found"),
     };
+
+    if let Err(err) = require_org_role(
+        db.pool.as_ref(),
+        auth.id,
+        organization_id,
+        &["owner", "admin"],
+    )
+    .await
+    {
+        return err.error_response();
+    }
 
     let engagement = CreateEngagement {
         organization_id,
@@ -64,12 +131,13 @@ pub async fn create_for_project(
         currency: Some(input.currency.unwrap_or_else(|| "usd".to_string())),
         due_date: input.due_date,
     };
-    match Engagement::create(&db.pool, engagement).await {
+
+    match Engagement::create(db.pool.as_ref(), engagement).await {
         Ok(engagement) => {
             let _ = EventService::record_event(
                 db.pool.as_ref(),
                 engagement.organization_id,
-                None,
+                Some(auth.id),
                 "engagement",
                 engagement.id,
                 "EngagementCreated",
@@ -85,7 +153,7 @@ pub async fn create_for_project(
             )
             .await;
 
-            HttpResponse::Ok().json(engagement)
+            HttpResponse::Created().json(engagement)
         }
         Err(err) => {
             eprintln!("Engagement::create error: {:?}", err);
@@ -94,8 +162,10 @@ pub async fn create_for_project(
     }
 }
 
-pub async fn show(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
-    match Engagement::find(&db.pool, path.into_inner()).await {
+pub async fn show(db: web::Data<Db>, auth: AuthUser, path: web::Path<i64>) -> impl Responder {
+    let engagement_id = path.into_inner();
+
+    match Engagement::find_for_user(db.pool.as_ref(), engagement_id, auth.id).await {
         Ok(engagement) => HttpResponse::Ok().json(engagement),
         Err(err) => HttpResponse::NotFound().body(err.to_string()),
     }
@@ -103,18 +173,38 @@ pub async fn show(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
 
 pub async fn apply_engagement_lifecycle_event(
     db: web::Data<Db>,
+    auth: AuthUser,
     engagement_id: i64,
-    actor_user_id: Option<i64>,
     event: EngagementEvent,
 ) -> HttpResponse {
-    let engagement = match sqlx::query!(
+    let organization_id = match organization_id_for_engagement(&db, engagement_id).await {
+        Ok(id) => id,
+        Err(_) => {
+            return HttpResponse::NotFound().json(serde_json::json!({
+                "error": "Engagement not found"
+            }));
+        }
+    };
+
+    if let Err(err) = require_org_role(
+        db.pool.as_ref(),
+        auth.id,
+        organization_id,
+        &["owner", "admin"],
+    )
+    .await
+    {
+        return err.error_response();
+    }
+
+    let engagement = match sqlx::query_as::<_, EngagementLifecycleResponse>(
         r#"
-        SELECT id, organization_id, status
+        SELECT id, organization_id, project_id, status
         FROM engagements
         WHERE id = $1
         "#,
-        engagement_id
     )
+    .bind(engagement_id)
     .fetch_optional(db.pool.as_ref())
     .await
     {
@@ -145,7 +235,7 @@ pub async fn apply_engagement_lifecycle_event(
         db.pool.as_ref(),
         engagement.organization_id,
         engagement.id,
-        actor_user_id,
+        Some(auth.id),
         current_status,
         event,
     )
@@ -164,21 +254,17 @@ pub async fn apply_engagement_lifecycle_event(
         .and_then(|v| v.as_str().map(|s| s.to_string()))
         .unwrap_or_else(|| format!("{:?}", next_status).to_lowercase());
 
-    let updated = sqlx::query_as!(
-        EngagementLifecycleResponse,
+    let updated = sqlx::query_as::<_, EngagementLifecycleResponse>(
         r#"
         UPDATE engagements
-        SET status = $1
+        SET status = $1,
+            updated_at = CURRENT_TIMESTAMP
         WHERE id = $2
-        RETURNING
-            id as "id!",
-            organization_id as "organization_id!",
-            project_id as "project_id!",
-            status as "status!"
+        RETURNING id, organization_id, project_id, status
         "#,
-        next_status_string,
-        engagement_id
     )
+    .bind(next_status_string)
+    .bind(engagement_id)
     .fetch_one(db.pool.as_ref())
     .await;
 
@@ -189,91 +275,131 @@ pub async fn apply_engagement_lifecycle_event(
         })),
     }
 }
-pub async fn mark_contract_sent(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
-    let engagement_id: i64 = path.into_inner();
+
+async fn notify_client(
+    db: &Db,
+    engagement_id: i64,
+    notification_key: &str,
+    title: &str,
+    body_prefix: &str,
+) {
+    let context = match notification_context_for_engagement(db, engagement_id).await {
+        Ok(context) => context,
+        Err(err) => {
+            eprintln!("engagement notification context error: {:?}", err);
+            return;
+        }
+    };
+
+    match NotificationRecipientService::engagement_client_email(db.pool.as_ref(), engagement_id)
+        .await
+    {
+        Ok(Some(client_email)) => {
+            if let Err(err) = NotificationService::notify_email(
+                db.pool.as_ref(),
+                context.organization_id,
+                client_email,
+                notification_key,
+                title,
+                &format!("{}: {}", body_prefix, context.title),
+                Some("engagement"),
+                Some(engagement_id),
+            )
+            .await
+            {
+                eprintln!("engagement notification error: {:?}", err);
+            }
+        }
+        Ok(None) => {}
+        Err(err) => eprintln!("engagement_client_email lookup error: {:?}", err),
+    }
+}
+
+pub async fn mark_contract_sent(
+    db: web::Data<Db>,
+    auth: AuthUser,
+    path: web::Path<i64>,
+) -> impl Responder {
+    let engagement_id = path.into_inner();
 
     let response = apply_engagement_lifecycle_event(
         db.clone(),
+        auth,
         engagement_id,
-        None,
         EngagementEvent::ContractSent,
     )
     .await;
 
-    if let Ok(engagement) = sqlx::query!(
-        r#"
-        SELECT title, organization_id
-        FROM engagements
-        WHERE id = ?  
-        "#,
-        engagement_id
-    )
-    .fetch_one(db.pool.as_ref())
-    .await
-    {
-        if let Ok(Some(client_email)) =
-            NotificationRecipientService::engagement_client_email(db.pool.as_ref(), engagement_id)
-                .await
-        {
-            if let Err(err) = NotificationService::notify_email(
-                db.pool.as_ref(),
-                engagement.organization_id,
-                client_email,
-                "contract_sent",
-                "Contract sent for review",
-                &format!("A contract has been sent for review: {}", engagement.title),
-                Some("engagement"),
-                Some(engagement_id),
-            )
-            .await
-            {
-                eprintln!("contract sent notification error: {:?}", err);
-            }
-        }
+    if response.status().is_success() {
+        notify_client(
+            &db,
+            engagement_id,
+            "contract_sent",
+            "Contract sent for review",
+            "A contract has been sent for review",
+        )
+        .await;
     }
 
     response
 }
 
-pub async fn mark_signed(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
+pub async fn mark_signed(
+    db: web::Data<Db>,
+    auth: AuthUser,
+    path: web::Path<i64>,
+) -> impl Responder {
     let engagement_id = path.into_inner();
 
     let response = apply_engagement_lifecycle_event(
         db.clone(),
+        auth,
         engagement_id,
-        None,
         EngagementEvent::ContractSigned,
     )
     .await;
 
-    if let Ok(engagement) = sqlx::query!(
-        r#"
-            SELECT title, organization_id
-            FROM engagements
-            WHERE id = ?
-        "#,
-        engagement_id
+    if response.status().is_success() {
+        notify_client(
+            &db,
+            engagement_id,
+            "contract_signed",
+            "Contract signed",
+            "A contract has been signed",
+        )
+        .await;
+    }
+
+    response
+}
+
+pub async fn activate_engagement(
+    db: web::Data<Db>,
+    auth: AuthUser,
+    path: web::Path<i64>,
+) -> impl Responder {
+    let engagement_id = path.into_inner();
+
+    let response = apply_engagement_lifecycle_event(
+        db.clone(),
+        auth,
+        engagement_id,
+        EngagementEvent::PaymentReceived,
     )
-    .fetch_one(db.pool.as_ref())
-    .await
-    {
+    .await;
+
+    if response.status().is_success() {
         if let Ok(Some(client_email)) =
             NotificationRecipientService::engagement_client_email(db.pool.as_ref(), engagement_id)
                 .await
         {
-            if let Err(err) = NotificationService::notify_email(
-                db.pool.as_ref(),
-                engagement.organization_id,
+            if let Err(err) = EmailNotificationService::billing_paid(
                 client_email,
-                "contract_signed",
-                "Contract signed",
-                &format!("A contract has been signed: {}", engagement.title),
-                Some("engagement"),
-                Some(engagement_id),
+                format!("engagement {}", engagement_id),
             )
             .await
             {
-                eprintln!("contract signed notification error: {:?}", err);
+                eprintln!("activation email error: {:?}", err);
             }
         }
     }
@@ -281,47 +407,32 @@ pub async fn mark_signed(db: web::Data<Db>, path: web::Path<i64>) -> impl Respon
     response
 }
 
-pub async fn activate_engagement(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
+pub async fn complete_engagement(
+    db: web::Data<Db>,
+    auth: AuthUser,
+    path: web::Path<i64>,
+) -> impl Responder {
     let engagement_id = path.into_inner();
 
-    let response = apply_engagement_lifecycle_event(
-        db.clone(),
-        engagement_id,
-        None,
-        EngagementEvent::PaymentReceived,
-    )
-    .await;
-
-    if let Ok(Some(client_email)) =
-        NotificationRecipientService::engagement_client_email(db.pool.as_ref(), engagement_id).await
-    {
-        if let Err(err) = EmailNotificationService::billing_paid(
-            client_email,
-            format!("engagement {}", engagement_id),
-        )
-        .await
-        {
-            eprintln!("activation email error: {:?}", err);
-        }
-    }
-
-    response
+    apply_engagement_lifecycle_event(db, auth, engagement_id, EngagementEvent::Complete).await
 }
 
-pub async fn complete_engagement(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
+pub async fn cancel_engagement(
+    db: web::Data<Db>,
+    auth: AuthUser,
+    path: web::Path<i64>,
+) -> impl Responder {
     let engagement_id = path.into_inner();
 
-    apply_engagement_lifecycle_event(db, engagement_id, None, EngagementEvent::Complete).await
+    apply_engagement_lifecycle_event(db, auth, engagement_id, EngagementEvent::Cancel).await
 }
 
-pub async fn cancel_engagement(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
+pub async fn dispute_engagement(
+    db: web::Data<Db>,
+    auth: AuthUser,
+    path: web::Path<i64>,
+) -> impl Responder {
     let engagement_id = path.into_inner();
 
-    apply_engagement_lifecycle_event(db, engagement_id, None, EngagementEvent::Cancel).await
-}
-
-pub async fn dispute_engagement(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
-    let engagement_id = path.into_inner();
-
-    apply_engagement_lifecycle_event(db, engagement_id, None, EngagementEvent::Dispute).await
+    apply_engagement_lifecycle_event(db, auth, engagement_id, EngagementEvent::Dispute).await
 }

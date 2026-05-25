@@ -1,100 +1,17 @@
+mod common;
+
 use backend::domain::engagement_state::{EngagementEvent, EngagementStatus};
-use backend::services::event_service::EventService;
 use backend::services::operations_kernel_service::OperationsKernelService;
-use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
+use common::setup_test_db;
+use serial_test::serial;
 
-async fn setup_test_db() -> SqlitePool {
-    let pool = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect("sqlite::memory:")
-        .await
-        .expect("failed to create sqlite memory db");
-
-    sqlx::query(
-        r#"
-        CREATE TABLE engagements (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            organization_id INTEGER NOT NULL,
-            project_id INTEGER NOT NULL,
-            contractor_name TEXT NOT NULL,
-            contractor_email TEXT NOT NULL,
-            role TEXT NOT NULL,
-            title TEXT NOT NULL,
-            scope_of_work TEXT NOT NULL,
-            deliverables TEXT,
-            repo_url TEXT,
-            amount_cents INTEGER NOT NULL,
-            currency TEXT NOT NULL DEFAULT 'usd',
-            due_date TEXT,
-            status TEXT NOT NULL DEFAULT 'draft',
-            platform_fee_status TEXT NOT NULL DEFAULT 'pending',
-            contract_id INTEGER,
-            invoice_id INTEGER,
-            payment_id INTEGER,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
-        "#,
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
-
-    sqlx::query(
-        r#"
-        CREATE TABLE engagement_billing (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            engagement_id INTEGER NOT NULL,
-            organization_id INTEGER NOT NULL,
-            billing_type TEXT NOT NULL,
-            amount_cents INTEGER NOT NULL,
-            currency TEXT NOT NULL DEFAULT 'usd',
-            status TEXT NOT NULL DEFAULT 'pending',
-            stripe_checkout_session_id TEXT,
-            stripe_payment_intent_id TEXT,
-            paid_at TEXT,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
-        "#,
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
-
-    sqlx::query(
-        r#"
-        CREATE TABLE operational_events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            organization_id INTEGER NOT NULL,
-            actor_user_id INTEGER NULL,
-            entity_type TEXT NOT NULL,
-            entity_id INTEGER NOT NULL,
-            event_type TEXT NOT NULL,
-            from_status TEXT NULL,
-            to_status TEXT NULL,
-            metadata TEXT NOT NULL DEFAULT '{}',
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
-        "#,
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
-
-    pool
-}
-
-#[actix_rt::test]
-async fn payment_received_activates_engagement_and_records_event() {
-    let pool = setup_test_db().await;
-
-    let engagement_id: i64 = sqlx::query_scalar(
+async fn seed_engagement(db: &backend::db::Db, status: &str) -> i64 {
+    sqlx::query_scalar::<_, i64>(
         r#"
         INSERT INTO engagements (
             organization_id,
             project_id,
+            engagement_type,
             contractor_name,
             contractor_email,
             role,
@@ -102,29 +19,53 @@ async fn payment_received_activates_engagement_and_records_event() {
             scope_of_work,
             amount_cents,
             currency,
-            status
+            status,
+            platform_fee_status,
+            created_at,
+            updated_at
         )
         VALUES (
-            1,
-            1,
-            'Test Contractor',
-            'contractor@example.com',
-            'Developer',
-            'Test Engagement',
-            'Build the workflow',
-            100000,
-            'usd',
-            'awaiting_payment'
+            $1,
+            $2,
+            'software',
+            $3,
+            $4,
+            $5,
+            $6,
+            $7,
+            $8,
+            $9,
+            $10,
+            'pending',
+            CURRENT_TIMESTAMP,
+            CURRENT_TIMESTAMP
         )
         RETURNING id
         "#,
     )
-    .fetch_one(&pool)
+    .bind(1_i64)
+    .bind(1_i64)
+    .bind("Test Contractor")
+    .bind("contractor@example.com")
+    .bind("Developer")
+    .bind("Test Engagement")
+    .bind("Build the workflow")
+    .bind(100000_i64)
+    .bind("usd")
+    .bind(status)
+    .fetch_one(db.pool.as_ref())
     .await
-    .unwrap();
+    .unwrap()
+}
+
+#[actix_rt::test]
+#[serial]
+async fn payment_received_activates_engagement_and_records_event() {
+    let db = setup_test_db().await;
+    let engagement_id = seed_engagement(&db, "awaiting_payment").await;
 
     let next_status = OperationsKernelService::apply_engagement_event(
-        &pool,
+        db.pool.as_ref(),
         1,
         engagement_id,
         None,
@@ -139,13 +80,14 @@ async fn payment_received_activates_engagement_and_records_event() {
     sqlx::query(
         r#"
         UPDATE engagements
-        SET status = ?
-        WHERE id = ?
+        SET status = $1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2
         "#,
     )
     .bind("active")
     .bind(engagement_id)
-    .execute(&pool)
+    .execute(db.pool.as_ref())
     .await
     .unwrap();
 
@@ -153,11 +95,11 @@ async fn payment_received_activates_engagement_and_records_event() {
         r#"
         SELECT status
         FROM engagements
-        WHERE id = ?
+        WHERE id = $1
         "#,
     )
     .bind(engagement_id)
-    .fetch_one(&pool)
+    .fetch_one(db.pool.as_ref())
     .await
     .unwrap();
 
@@ -165,14 +107,14 @@ async fn payment_received_activates_engagement_and_records_event() {
 
     let event_count: i64 = sqlx::query_scalar(
         r#"
-        SELECT COUNT(*)
+        SELECT COUNT(*)::BIGINT
         FROM operational_events
         WHERE entity_type = 'engagement'
-          AND entity_id = ?
+          AND entity_id = $1
         "#,
     )
     .bind(engagement_id)
-    .fetch_one(&pool)
+    .fetch_one(db.pool.as_ref())
     .await
     .unwrap();
 
@@ -180,11 +122,12 @@ async fn payment_received_activates_engagement_and_records_event() {
 }
 
 #[actix_rt::test]
+#[serial]
 async fn cannot_activate_engagement_from_draft() {
-    let pool = setup_test_db().await;
+    let db = setup_test_db().await;
 
     let result = OperationsKernelService::apply_engagement_event(
-        &pool,
+        db.pool.as_ref(),
         1,
         999,
         None,

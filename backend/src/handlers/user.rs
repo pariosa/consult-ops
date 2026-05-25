@@ -1,9 +1,14 @@
 use crate::auth::hash_password;
+use crate::auth_context::AuthUser;
 use crate::db::Db;
 use crate::models::user::{CreateUser, CreateUserRequest, UpdateUserType, User};
-use actix_web::{HttpResponse, Responder, web};
+use crate::services::authz::require_platform_admin;
+use actix_web::{HttpResponse, Responder, ResponseError, web};
 
-pub async fn get_users(db: web::Data<Db>) -> impl Responder {
+pub async fn get_users(db: web::Data<Db>, auth: AuthUser) -> impl Responder {
+    if let Err(err) = require_platform_admin(&auth) {
+        return err.error_response();
+    }
     match User::all(&db).await {
         Ok(users) => HttpResponse::Ok().json(users),
         Err(e) => {
@@ -13,7 +18,14 @@ pub async fn get_users(db: web::Data<Db>) -> impl Responder {
     }
 }
 
-pub async fn get_user_by_id(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
+pub async fn get_user_by_id(
+    db: web::Data<Db>,
+    auth: AuthUser,
+    path: web::Path<i64>,
+) -> impl Responder {
+    if let Err(err) = require_platform_admin(&auth) {
+        return err.error_response();
+    }
     let user_id = path.into_inner();
 
     match User::find_by_id(&db, user_id).await {
@@ -24,9 +36,14 @@ pub async fn get_user_by_id(db: web::Data<Db>, path: web::Path<i64>) -> impl Res
 
 pub async fn update_user_type(
     db: web::Data<Db>,
+    auth: AuthUser,
     path: web::Path<i64>,
     info: web::Json<UpdateUserType>,
 ) -> impl Responder {
+    if let Err(err) = require_platform_admin(&auth) {
+        return err.error_response();
+    }
+
     let user_id = path.into_inner();
 
     let allowed = ["admin", "consultant", "client"];
@@ -44,7 +61,15 @@ pub async fn update_user_type(
     }
 }
 
-pub async fn create_user(db: web::Data<Db>, info: web::Json<CreateUserRequest>) -> impl Responder {
+pub async fn create_user(
+    db: web::Data<Db>,
+    auth: AuthUser,
+    info: web::Json<CreateUserRequest>,
+) -> impl Responder {
+    if let Err(err) = require_platform_admin(&auth) {
+        return err.error_response();
+    }
+
     let allowed = ["admin", "consultant", "client"];
 
     if !allowed.contains(&info.user_type.as_str()) {
@@ -57,7 +82,7 @@ pub async fn create_user(db: web::Data<Db>, info: web::Json<CreateUserRequest>) 
     };
 
     let user = CreateUser {
-        email: info.email.clone(),
+        email: info.email.trim().to_lowercase(),
         password_hash,
         name: info.name.clone(),
         user_type: info.user_type.clone(),

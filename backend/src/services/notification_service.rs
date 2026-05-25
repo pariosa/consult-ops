@@ -1,12 +1,13 @@
-use sqlx::{Result as SqlxResult, SqlitePool};
+use sqlx::{PgPool, Result as SqlxResult};
 
 use crate::services::email_notification_service::{EmailMessage, EmailNotificationService};
 
 pub struct NotificationService;
 
 impl NotificationService {
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_notification(
-        db: &SqlitePool,
+        db: &PgPool,
         organization_id: i64,
         user_id: Option<i64>,
         recipient_email: Option<String>,
@@ -16,7 +17,7 @@ impl NotificationService {
         entity_type: Option<&str>,
         entity_id: Option<i64>,
     ) -> SqlxResult<i64> {
-        let notification_id: i64 = sqlx::query_scalar(
+        sqlx::query_scalar::<_, i64>(
             r#"
             INSERT INTO notifications (
                 organization_id,
@@ -29,7 +30,17 @@ impl NotificationService {
                 entity_id,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            VALUES (
+                $1,
+                $2,
+                $3,
+                $4,
+                $5,
+                $6,
+                $7,
+                $8,
+                CURRENT_TIMESTAMP
+            )
             RETURNING id
             "#,
         )
@@ -42,13 +53,11 @@ impl NotificationService {
         .bind(entity_type)
         .bind(entity_id)
         .fetch_one(db)
-        .await?;
-
-        Ok(notification_id)
+        .await
     }
 
-    pub async fn create_email_job(db: &SqlitePool, notification_id: i64) -> SqlxResult<i64> {
-        sqlx::query_scalar(
+    pub async fn create_email_job(db: &PgPool, notification_id: i64) -> SqlxResult<i64> {
+        sqlx::query_scalar::<_, i64>(
             r#"
             INSERT INTO notification_jobs (
                 notification_id,
@@ -59,7 +68,15 @@ impl NotificationService {
                 created_at,
                 updated_at
             )
-            VALUES (?, 'email', 'pending', 0, datetime('now'), datetime('now'), datetime('now'))
+            VALUES (
+                $1,
+                'email',
+                'pending',
+                0,
+                CURRENT_TIMESTAMP,
+                CURRENT_TIMESTAMP,
+                CURRENT_TIMESTAMP
+            )
             RETURNING id
             "#,
         )
@@ -68,8 +85,9 @@ impl NotificationService {
         .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn notify_email(
-        db: &SqlitePool,
+        db: &PgPool,
         organization_id: i64,
         recipient_email: String,
         notification_type: &str,

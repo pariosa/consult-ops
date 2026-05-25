@@ -1,12 +1,19 @@
 use actix_web::{HttpResponse, Responder, web};
 
+use crate::auth_context::AuthUser;
 use crate::db::Db;
 use crate::models::engagement::Engagement;
 use crate::models::engagement_milestone::EngagementMilestone;
-pub async fn generate_for_engagement(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
+
+pub async fn generate_for_engagement(
+    db: web::Data<Db>,
+    auth: AuthUser,
+    path: web::Path<i64>,
+) -> impl Responder {
     let engagement_id = path.into_inner();
 
-    let engagement = match Engagement::find(db.pool.as_ref(), engagement_id).await {
+    let engagement = match Engagement::find_for_user(db.pool.as_ref(), engagement_id, auth.id).await
+    {
         Ok(item) => item,
         Err(err) => return HttpResponse::NotFound().body(err.to_string()),
     };

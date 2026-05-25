@@ -1,29 +1,32 @@
-use actix_web::{HttpResponse, Responder, web};
+use actix_web::{HttpResponse, Responder, ResponseError, web};
 use chrono::{Duration, Utc};
+use std::collections::HashMap;
 use uuid::Uuid;
 
-use crate::auth::permissions::can_manage_agreements;
 use crate::auth_context::AuthUser;
 use crate::db::Db;
 use crate::models::organization_invitation::{
     CreateOrganizationInvitation, OrganizationInvitation,
 };
-use crate::models::organization_member::OrganizationMember; 
+use crate::models::organization_member::OrganizationMember;
+use crate::services::authz::{require_org_member, require_org_role};
 use crate::services::event_service::EventService;
 use crate::services::notification_service::NotificationService;
+
+fn frontend_url() -> String {
+    std::env::var("FRONTEND_URL").unwrap_or_else(|_| "http://localhost:3000".to_string())
+}
 
 pub async fn list_organization_members(
     db: web::Data<Db>,
     auth: AuthUser,
     path: web::Path<i64>,
 ) -> impl Responder {
-    if !can_manage_agreements(&auth.user_type) {
-        return HttpResponse::Forbidden().json(serde_json::json!({
-            "error": "You do not have permission to view organization members."
-        }));
-    }
-
     let organization_id = path.into_inner();
+
+    if let Err(err) = require_org_member(db.pool.as_ref(), auth.id, organization_id).await {
+        return err.error_response();
+    }
 
     match OrganizationMember::list_for_organization(db.pool.as_ref(), organization_id).await {
         Ok(members) => HttpResponse::Ok().json(members),
@@ -39,13 +42,18 @@ pub async fn list_organization_invitations(
     auth: AuthUser,
     path: web::Path<i64>,
 ) -> impl Responder {
-    if !can_manage_agreements(&auth.user_type) {
-        return HttpResponse::Forbidden().json(serde_json::json!({
-            "error": "You do not have permission to view organization invitations."
-        }));
-    }
-
     let organization_id = path.into_inner();
+
+    if let Err(err) = require_org_role(
+        db.pool.as_ref(),
+        auth.id,
+        organization_id,
+        &["owner", "admin"],
+    )
+    .await
+    {
+        return err.error_response();
+    }
 
     match OrganizationInvitation::list_for_organization(db.pool.as_ref(), organization_id).await {
         Ok(invitations) => HttpResponse::Ok().json(invitations),
@@ -62,14 +70,19 @@ pub async fn invite_organization_member(
     path: web::Path<i64>,
     payload: web::Json<CreateOrganizationInvitation>,
 ) -> impl Responder {
-    if !can_manage_agreements(&auth.user_type) {
-        return HttpResponse::Forbidden().json(serde_json::json!({
-            "error": "You do not have permission to invite organization members."
-        }));
-    }
-
     let organization_id = path.into_inner();
     let input = payload.into_inner();
+
+    if let Err(err) = require_org_role(
+        db.pool.as_ref(),
+        auth.id,
+        organization_id,
+        &["owner", "admin"],
+    )
+    .await
+    {
+        return err.error_response();
+    }
 
     let allowed_roles = [
         "admin",
@@ -86,13 +99,21 @@ pub async fn invite_organization_member(
         }));
     }
 
+    let email = input.email.trim().to_lowercase();
+
+    if !email.contains('@') {
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "A valid email is required."
+        }));
+    }
+
     let token = Uuid::new_v4().to_string();
     let expires_at = (Utc::now() + Duration::days(7)).to_rfc3339();
 
     match OrganizationInvitation::create(
         db.pool.as_ref(),
         organization_id,
-        input.email.clone(),
+        email.clone(),
         input.role.clone(),
         token.clone(),
         Some(auth.id),
@@ -101,7 +122,7 @@ pub async fn invite_organization_member(
     .await
     {
         Ok(invitation) => {
-            let invite_url = format!("http://localhost:3000/invitations/accept?token={}", token);
+            let invite_url = format!("{}/invitations/accept?token={}", frontend_url(), token);
 
             let _ = EventService::record_event(
                 db.pool.as_ref(),
@@ -119,29 +140,31 @@ pub async fn invite_organization_member(
                 }),
             )
             .await;
+
             if let Err(err) = NotificationService::notify_email(
-    db.pool.as_ref(),
-    invitation.organization_id, 
-    invitation.email.clone(),
-    "organization_invitation_created",
-    "You're invited to join Consult Ops",
-    &format!(
-        "You've been invited to join Consult Ops as {}.\n\nAccept your invitation here:\n{}",
-        invitation.role,
-        invite_url
-    ),
-    Some("organization_invitation"),
-    Some(invitation.id),
-)
-.await
+                db.pool.as_ref(),
+                invitation.organization_id,
+                invitation.email.clone(),
+                "organization_invitation_created",
+                "You're invited to join Consult Ops",
+                &format!(
+                    "You've been invited to join Consult Ops as {}.\n\nAccept your invitation here:\n{}",
+                    invitation.role,
+                    invite_url
+                ),
+                Some("organization_invitation"),
+                Some(invitation.id),
+            )
+            .await
             {
                 eprintln!("invitation email error: {:?}", err);
             }
+
             HttpResponse::Created().json(serde_json::json!({
                 "invitation": invitation,
                 "invite_url": invite_url,
                 "email_preview": {
-                    "to": input.email,
+                    "to": email,
                     "subject": "You're invited to join Consult Ops",
                     "body": format!(
                         "You've been invited to join an organization in Consult Ops as {}. Accept here: {}",
@@ -161,7 +184,7 @@ pub async fn invite_organization_member(
 pub async fn accept_organization_invitation(
     db: web::Data<Db>,
     auth: AuthUser,
-    query: web::Query<std::collections::HashMap<String, String>>,
+    query: web::Query<HashMap<String, String>>,
 ) -> impl Responder {
     let Some(token) = query.get("token") else {
         return HttpResponse::BadRequest().json(serde_json::json!({
@@ -179,11 +202,13 @@ pub async fn accept_organization_invitation(
                 }));
             }
         };
+
     if invitation.email.to_lowercase() != auth.email.to_lowercase() {
         return HttpResponse::Forbidden().json(serde_json::json!({
             "error": "Invitation email does not match authenticated user."
         }));
     }
+
     let expires_at = match chrono::DateTime::parse_from_rfc3339(&invitation.expires_at) {
         Ok(date) => date.with_timezone(&Utc),
         Err(_) => {
@@ -194,6 +219,8 @@ pub async fn accept_organization_invitation(
     };
 
     if expires_at < Utc::now() {
+        let _ = OrganizationInvitation::mark_expired(db.pool.as_ref(), invitation.id).await;
+
         return HttpResponse::BadRequest().json(serde_json::json!({
             "error": "Invitation has expired."
         }));
@@ -211,6 +238,20 @@ pub async fn accept_organization_invitation(
             let _ = OrganizationInvitation::mark_accepted(db.pool.as_ref(), invitation.id, auth.id)
                 .await;
 
+            let _ = sqlx::query(
+                r#"
+                UPDATE users
+                SET current_organization_id = $1,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = $2
+                  AND current_organization_id IS NULL
+                "#,
+            )
+            .bind(invitation.organization_id)
+            .bind(auth.id)
+            .execute(db.pool.as_ref())
+            .await;
+
             let _ = EventService::record_event(
                 db.pool.as_ref(),
                 invitation.organization_id,
@@ -227,16 +268,22 @@ pub async fn accept_organization_invitation(
                 }),
             )
             .await;
+
             if let Some(invited_by_user_id) = invitation.invited_by_user_id {
-                if let Ok(admin_email) =
-                    sqlx::query_scalar::<_, String>("SELECT email FROM users WHERE id = ?")
-                        .bind(invited_by_user_id)
-                        .fetch_one(db.pool.as_ref())
-                        .await
+                if let Ok(admin_email) = sqlx::query_scalar::<_, String>(
+                    r#"
+                    SELECT email
+                    FROM users
+                    WHERE id = $1
+                    "#,
+                )
+                .bind(invited_by_user_id)
+                .fetch_one(db.pool.as_ref())
+                .await
                 {
                     let _ = NotificationService::notify_email(
                         db.pool.as_ref(),
-                        invitation.organization_id, 
+                        invitation.organization_id,
                         admin_email,
                         "organization_invitation_accepted",
                         "Organization invitation accepted",
@@ -250,6 +297,7 @@ pub async fn accept_organization_invitation(
                     .await;
                 }
             }
+
             HttpResponse::Ok().json(member)
         }
         Err(err) => {

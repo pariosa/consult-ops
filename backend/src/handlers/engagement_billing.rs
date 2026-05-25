@@ -1,33 +1,30 @@
+use crate::auth_context::AuthUser;
 use crate::db::Db;
 use crate::domain::engagement_state::{EngagementEvent, EngagementStatus};
 use crate::models::engagement_billing::{
     CreateEngagementBillingRequest, EngagementBilling, UpdateCheckoutSessionRequest,
 };
-use crate::services::email_notification_service::EmailNotificationService;
+use crate::services::authz::{require_org_member, require_org_role};
 use crate::services::event_service::EventService;
 use crate::services::notification_email_recipient_service::NotificationRecipientService;
 use crate::services::notification_service::NotificationService;
 use crate::services::operations_kernel_service::OperationsKernelService;
-use actix_web::{HttpResponse, Responder, web};
-use sqlx::{Result, SqlitePool};
-use stripe_checkout::CheckoutSession;
-use stripe_checkout::checkout_session::CreateCheckoutSession;
-use stripe_checkout::checkout_session::CreateCheckoutSessionLineItems;
-use stripe_shared::CheckoutSessionMode;
+use actix_web::{HttpResponse, Responder, ResponseError, web};
+use sqlx::{PgPool, Result};
 
 pub async fn activate_engagement_from_payment(
     db: &Db,
     engagement_id: i64,
     organization_id: i64,
 ) -> Result<(), String> {
-    let current_status: String = sqlx::query_scalar!(
+    let current_status: String = sqlx::query_scalar::<_, String>(
         r#"
-        SELECT status as "status!"
-        FROM engagements
-        WHERE id = $1
-        "#,
-        engagement_id
+    SELECT status
+    FROM engagements
+    WHERE id = $1
+    "#,
     )
+    .bind(engagement_id)
     .fetch_one(db.pool.as_ref())
     .await
     .map_err(|err| err.to_string())?;
@@ -51,15 +48,16 @@ pub async fn activate_engagement_from_payment(
         .and_then(|v| v.as_str().map(|s| s.to_string()))
         .unwrap_or_else(|| format!("{:?}", next_status).to_lowercase());
 
-    sqlx::query!(
+    sqlx::query(
         r#"
-        UPDATE engagements
-        SET status = $1
-        WHERE id = $2
-        "#,
-        next_status_string,
-        engagement_id
+    UPDATE engagements
+    SET status = $1,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = $2
+    "#,
     )
+    .bind(next_status_string)
+    .bind(engagement_id)
     .execute(db.pool.as_ref())
     .await
     .map_err(|err| err.to_string())?;
@@ -67,14 +65,14 @@ pub async fn activate_engagement_from_payment(
     Ok(())
 }
 async fn organization_id_for_engagement(db: &Db, engagement_id: i64) -> Result<i64, sqlx::Error> {
-    sqlx::query_scalar!(
+    sqlx::query_scalar::<_, i64>(
         r#"
-        SELECT organization_id as "organization_id!"
+        SELECT organization_id
         FROM engagements
         WHERE id = $1
         "#,
-        engagement_id
     )
+    .bind(engagement_id)
     .fetch_one(db.pool.as_ref())
     .await
 }
@@ -123,8 +121,21 @@ pub async fn record_billing_and_engagement_event(
     .await;
 }
 
-pub async fn list_engagement_billing(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
+pub async fn list_engagement_billing(
+    db: web::Data<Db>,
+    auth: AuthUser,
+    path: web::Path<i64>,
+) -> impl Responder {
     let engagement_id = path.into_inner();
+
+    let organization_id = match organization_id_for_engagement(&db, engagement_id).await {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::NotFound().body("Engagement not found"),
+    };
+
+    if let Err(err) = require_org_member(db.pool.as_ref(), auth.id, organization_id).await {
+        return err.error_response();
+    }
 
     match EngagementBilling::for_engagement(db.pool.as_ref(), engagement_id).await {
         Ok(items) => HttpResponse::Ok().json(items),
@@ -134,9 +145,9 @@ pub async fn list_engagement_billing(db: web::Data<Db>, path: web::Path<i64>) ->
         }
     }
 }
-
 pub async fn create_engagement_billing(
     db: web::Data<Db>,
+    auth: AuthUser,
     path: web::Path<i64>,
     payload: web::Json<CreateEngagementBillingRequest>,
 ) -> impl Responder {
@@ -150,7 +161,16 @@ pub async fn create_engagement_billing(
             return HttpResponse::BadRequest().body("Invalid engagement_id");
         }
     };
-
+    if let Err(err) = require_org_role(
+        db.pool.as_ref(),
+        auth.id,
+        organization_id,
+        &["owner", "admin"],
+    )
+    .await
+    {
+        return err.error_response();
+    }
     let billing_type = input
         .billing_type
         .unwrap_or_else(|| "activation_fee".to_string());
@@ -187,7 +207,11 @@ pub async fn create_engagement_billing(
     }
 }
 
-pub async fn create_activation_fee(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
+pub async fn create_activation_fee(
+    db: web::Data<Db>,
+    auth: AuthUser,
+    path: web::Path<i64>,
+) -> impl Responder {
     let engagement_id = path.into_inner();
 
     let organization_id = match organization_id_for_engagement(&db, engagement_id).await {
@@ -197,6 +221,16 @@ pub async fn create_activation_fee(db: web::Data<Db>, path: web::Path<i64>) -> i
             return HttpResponse::BadRequest().body("Invalid engagement_id");
         }
     };
+    if let Err(err) = require_org_role(
+        db.pool.as_ref(),
+        auth.id,
+        organization_id,
+        &["owner", "admin"],
+    )
+    .await
+    {
+        return err.error_response();
+    }
     if let Ok(Some(existing)) =
         EngagementBilling::find_activation_fee(db.pool.as_ref(), engagement_id).await
     {
@@ -233,10 +267,28 @@ pub async fn create_activation_fee(db: web::Data<Db>, path: web::Path<i64>) -> i
 
 pub async fn attach_checkout_session(
     db: web::Data<Db>,
+    auth: AuthUser,
     path: web::Path<i64>,
     payload: web::Json<UpdateCheckoutSessionRequest>,
 ) -> impl Responder {
     let billing_id = path.into_inner();
+
+    let organization_id = match organization_id_for_billing(&db, billing_id).await {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::NotFound().body("Billing record not found"),
+    };
+
+    if let Err(err) = require_org_role(
+        db.pool.as_ref(),
+        auth.id,
+        organization_id,
+        &["owner", "admin"],
+    )
+    .await
+    {
+        return err.error_response();
+    }
+
     let input = payload.into_inner();
 
     match EngagementBilling::attach_checkout_session(
@@ -264,10 +316,27 @@ pub async fn attach_checkout_session(
         }
     }
 }
-
-pub async fn mark_billing_paid(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
+pub async fn mark_billing_paid(
+    db: web::Data<Db>,
+    auth: AuthUser,
+    path: web::Path<i64>,
+) -> impl Responder {
     let billing_id = path.into_inner();
+    let organization_id = match organization_id_for_billing(&db, billing_id).await {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::NotFound().body("Billing record not found"),
+    };
 
+    if let Err(err) = require_org_role(
+        db.pool.as_ref(),
+        auth.id,
+        organization_id,
+        &["owner", "admin"],
+    )
+    .await
+    {
+        return err.error_response();
+    }
     match EngagementBilling::mark_paid(db.pool.as_ref(), billing_id).await {
         Ok(billing) => {
             record_billing_and_engagement_event(
@@ -303,7 +372,11 @@ pub async fn mark_billing_paid(db: web::Data<Db>, path: web::Path<i64>) -> impl 
         }
     }
 }
-pub async fn create_activation_checkout(db: web::Data<Db>, path: web::Path<i64>) -> impl Responder {
+pub async fn create_activation_checkout(
+    db: web::Data<Db>,
+    auth: AuthUser,
+    path: web::Path<i64>,
+) -> impl Responder {
     let engagement_id = path.into_inner();
 
     let organization_id = match organization_id_for_engagement(&db, engagement_id).await {
@@ -313,7 +386,16 @@ pub async fn create_activation_checkout(db: web::Data<Db>, path: web::Path<i64>)
             return HttpResponse::BadRequest().body("Invalid engagement_id");
         }
     };
-
+    if let Err(err) = require_org_role(
+        db.pool.as_ref(),
+        auth.id,
+        organization_id,
+        &["owner", "admin"],
+    )
+    .await
+    {
+        return err.error_response();
+    }
     let billing =
         match EngagementBilling::find_activation_fee(db.pool.as_ref(), engagement_id).await {
             Ok(Some(existing)) => existing,
@@ -481,4 +563,17 @@ pub async fn create_activation_checkout(db: web::Data<Db>, path: web::Path<i64>)
         "checkout_session_id": session_id,
         "url": checkout_url
     }))
+}
+
+async fn organization_id_for_billing(db: &Db, billing_id: i64) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT organization_id
+        FROM engagement_billing
+        WHERE id = $1
+        "#,
+    )
+    .bind(billing_id)
+    .fetch_one(db.pool.as_ref())
+    .await
 }

@@ -1,5 +1,6 @@
 // src/services/event_service.rs
-use sqlx::SqlitePool;
+
+use sqlx::PgPool;
 
 use crate::domain::engagement_state::EngagementTransition;
 
@@ -7,7 +8,7 @@ pub struct EventService;
 
 impl EventService {
     pub async fn record_engagement_transition(
-        pool: &SqlitePool,
+        pool: &PgPool,
         organization_id: i64,
         engagement_id: i64,
         actor_user_id: Option<i64>,
@@ -25,7 +26,7 @@ impl EventService {
             .and_then(|v| v.as_str().map(|s| s.to_string()))
             .unwrap_or_else(|| format!("{:?}", transition.to).to_lowercase());
 
-        sqlx::query!(
+        sqlx::query(
             r#"
             INSERT INTO operational_events (
                 organization_id,
@@ -35,17 +36,19 @@ impl EventService {
                 event_type,
                 from_status,
                 to_status,
-                metadata
+                metadata,
+                created_at,
+                updated_at
             )
-            VALUES ($1, $2, 'engagement', $3, $4, $5, $6, '{}')
+            VALUES ($1, $2, 'engagement', $3, $4, $5, $6, '{}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             "#,
-            organization_id,
-            actor_user_id,
-            engagement_id,
-            event_type,
-            from_status,
-            to_status
         )
+        .bind(organization_id)
+        .bind(actor_user_id)
+        .bind(engagement_id)
+        .bind(event_type)
+        .bind(from_status)
+        .bind(to_status)
         .execute(pool)
         .await
         .map_err(|err| err.to_string())?;
@@ -53,8 +56,9 @@ impl EventService {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn record_event(
-        pool: &SqlitePool,
+        pool: &PgPool,
         organization_id: i64,
         actor_user_id: Option<i64>,
         entity_type: &str,
@@ -65,7 +69,8 @@ impl EventService {
         metadata: serde_json::Value,
     ) -> Result<(), String> {
         let metadata_json = metadata.to_string();
-        sqlx::query!(
+
+        sqlx::query(
             r#"
             INSERT INTO operational_events (
                 organization_id,
@@ -75,19 +80,21 @@ impl EventService {
                 event_type,
                 from_status,
                 to_status,
-                metadata
+                metadata,
+                created_at,
+                updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             "#,
-            organization_id,
-            actor_user_id,
-            entity_type,
-            entity_id,
-            event_type,
-            from_status,
-            to_status,
-            metadata_json
         )
+        .bind(organization_id)
+        .bind(actor_user_id)
+        .bind(entity_type)
+        .bind(entity_id)
+        .bind(event_type)
+        .bind(from_status)
+        .bind(to_status)
+        .bind(metadata_json)
         .execute(pool)
         .await
         .map_err(|err| err.to_string())?;

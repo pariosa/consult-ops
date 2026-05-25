@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, Result as SqlxResult, SqlitePool};
+use sqlx::{FromRow, PgPool, Result as SqlxResult};
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct Party {
@@ -35,7 +35,7 @@ pub struct CreateParty {
 
 impl Party {
     pub async fn create(
-        db: &SqlitePool,
+        db: &PgPool,
         organization_id: i64,
         payload: CreateParty,
     ) -> SqlxResult<Self> {
@@ -51,27 +51,27 @@ impl Party {
 
         sqlx::query_as::<_, Party>(
             r#"
-        INSERT INTO parties (
-            organization_id,
-            name,
-            email,
-            party_type,
-            is_verified,
-            verification_status,
-            verified_at,
-            verification_method,
-            linked_user_id,
-            linked_client_id,
-            linked_organization_id,
-            created_at
-        )
-        VALUES (
-            ?, ?, ?, ?, ?, ?,
-            CASE WHEN ? = 1 THEN datetime('now') ELSE NULL END,
-            ?, ?, ?, ?, datetime('now')
-        )
-        RETURNING *
-        "#,
+            INSERT INTO parties (
+                organization_id,
+                name,
+                email,
+                party_type,
+                is_verified,
+                verification_status,
+                verified_at,
+                verification_method,
+                linked_user_id,
+                linked_client_id,
+                linked_organization_id,
+                created_at
+            )
+            VALUES (
+                $1, $2, $3, $4, $5, $6,
+                CASE WHEN $7 = 1 THEN CURRENT_TIMESTAMP ELSE NULL END,
+                $8, $9, $10, $11, CURRENT_TIMESTAMP
+            )
+            RETURNING *
+            "#,
         )
         .bind(organization_id)
         .bind(payload.name)
@@ -87,12 +87,13 @@ impl Party {
         .fetch_one(db)
         .await
     }
-    pub async fn for_organization(db: &SqlitePool, organization_id: i64) -> SqlxResult<Vec<Self>> {
+
+    pub async fn for_organization(db: &PgPool, organization_id: i64) -> SqlxResult<Vec<Self>> {
         sqlx::query_as::<_, Party>(
             r#"
             SELECT *
             FROM parties
-            WHERE organization_id = ?
+            WHERE organization_id = $1
             ORDER BY created_at DESC
             "#,
         )
@@ -100,21 +101,76 @@ impl Party {
         .fetch_all(db)
         .await
     }
+
+    pub async fn for_organization_for_user(
+        db: &PgPool,
+        organization_id: i64,
+        user_id: i64,
+    ) -> SqlxResult<Vec<Self>> {
+        sqlx::query_as::<_, Party>(
+            r#"
+            SELECT p.*
+            FROM parties p
+            JOIN organization_members om
+              ON om.organization_id = p.organization_id
+            WHERE p.organization_id = $1
+              AND om.user_id = $2
+              AND om.status = 'active'
+            ORDER BY p.created_at DESC
+            "#,
+        )
+        .bind(organization_id)
+        .bind(user_id)
+        .fetch_all(db)
+        .await
+    }
+
+    pub async fn find(db: &PgPool, id: i64) -> SqlxResult<Self> {
+        sqlx::query_as::<_, Party>(
+            r#"
+            SELECT *
+            FROM parties
+            WHERE id = $1
+            "#,
+        )
+        .bind(id)
+        .fetch_one(db)
+        .await
+    }
+
+    pub async fn find_for_user(db: &PgPool, id: i64, user_id: i64) -> SqlxResult<Self> {
+        sqlx::query_as::<_, Party>(
+            r#"
+            SELECT p.*
+            FROM parties p
+            JOIN organization_members om
+              ON om.organization_id = p.organization_id
+            WHERE p.id = $1
+              AND om.user_id = $2
+              AND om.status = 'active'
+            "#,
+        )
+        .bind(id)
+        .bind(user_id)
+        .fetch_one(db)
+        .await
+    }
+
     pub async fn create_verified_user_party(
-        db: &SqlitePool,
+        db: &PgPool,
         organization_id: i64,
         user_id: i64,
         party_type: &str,
     ) -> SqlxResult<Self> {
         if let Some(existing) = sqlx::query_as::<_, Party>(
             r#"
-        SELECT *
-        FROM parties
-        WHERE organization_id = ?
-          AND linked_user_id = ?
-          AND party_type = ?
-        LIMIT 1
-        "#,
+            SELECT *
+            FROM parties
+            WHERE organization_id = $1
+              AND linked_user_id = $2
+              AND party_type = $3
+            LIMIT 1
+            "#,
         )
         .bind(organization_id)
         .bind(user_id)
@@ -142,20 +198,20 @@ impl Party {
                 created_at
             )
             SELECT
-                ?,
+                $1,
                 COALESCE(name, email),
                 email,
-                ?,
+                $2,
                 id,
                 NULL,
-                ?,
+                $3,
                 1,
                 'verified',
-                datetime('now'),
+                CURRENT_TIMESTAMP,
                 'linked_user',
-                datetime('now')
+                CURRENT_TIMESTAMP
             FROM users
-            WHERE id = ?
+            WHERE id = $4
             RETURNING *
             "#,
         )
@@ -166,20 +222,21 @@ impl Party {
         .fetch_one(db)
         .await
     }
+
     pub async fn create_verified_client_party(
-        db: &SqlitePool,
+        db: &PgPool,
         organization_id: i64,
         client_id: i64,
     ) -> SqlxResult<Self> {
         if let Some(existing) = sqlx::query_as::<_, Party>(
             r#"
-        SELECT *
-        FROM parties
-        WHERE organization_id = ?
-          AND linked_client_id = ?
-          AND party_type = 'client'
-        LIMIT 1
-        "#,
+            SELECT *
+            FROM parties
+            WHERE organization_id = $1
+              AND linked_client_id = $2
+              AND party_type = 'client'
+            LIMIT 1
+            "#,
         )
         .bind(organization_id)
         .bind(client_id)
@@ -191,41 +248,60 @@ impl Party {
 
         sqlx::query_as::<_, Party>(
             r#"
-                INSERT INTO parties (
-                    organization_id,
-                    name,
-                    email,
-                    party_type,
-                    linked_user_id,
-                    linked_client_id,
-                    linked_organization_id,
-                    is_verified,
-                    verification_status,
-                    verified_at,
-                    verification_method,
-                    created_at
-                )
-                SELECT
-                    organization_id,
-                    COALESCE(company_name, name),
-                    email,
-                    'client',
-                    NULL,
-                    id,
-                    NULL,
-                    1,
-                    'verified',
-                    datetime('now'),
-                    'linked_client',
-                    datetime('now')
-                FROM clients
-                WHERE id = ?
-                AND organization_id = ?
-                RETURNING *
-                "#,
+            INSERT INTO parties (
+                organization_id,
+                name,
+                email,
+                party_type,
+                linked_user_id,
+                linked_client_id,
+                linked_organization_id,
+                is_verified,
+                verification_status,
+                verified_at,
+                verification_method,
+                created_at
+            )
+            SELECT
+                organization_id,
+                COALESCE(company_name, name),
+                email,
+                'client',
+                NULL,
+                id,
+                NULL,
+                1,
+                'verified',
+                CURRENT_TIMESTAMP,
+                'linked_client',
+                CURRENT_TIMESTAMP
+            FROM clients
+            WHERE id = $1
+              AND organization_id = $2
+            RETURNING *
+            "#,
         )
         .bind(client_id)
         .bind(organization_id)
+        .fetch_one(db)
+        .await
+    }
+
+    pub async fn verify(db: &PgPool, id: i64, verification_method: &str) -> SqlxResult<Self> {
+        sqlx::query_as::<_, Party>(
+            r#"
+            UPDATE parties
+            SET
+                is_verified = 1,
+                verification_status = 'verified',
+                verified_at = CURRENT_TIMESTAMP,
+                verification_method = $1
+            WHERE id = $2
+            RETURNING *
+            "#,
+        )
+        .bind(verification_method)
+        .bind(id)
         .fetch_one(db)
         .await
     }

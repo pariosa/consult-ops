@@ -14,6 +14,7 @@ pub struct CreateMyOrganizationRequest {
 pub struct SetCurrentOrganizationRequest {
     pub organization_id: i64,
 }
+
 #[derive(Debug, Serialize, FromRow)]
 pub struct MyOrganizationResponse {
     pub organization_id: i64,
@@ -52,20 +53,17 @@ pub async fn list_my_organizations(db: web::Data<Db>, auth: AuthUser) -> impl Re
             o.slug AS slug,
             om.role AS role,
             om.status AS status,
-            CASE
-                WHEN u.current_organization_id = o.id THEN 1
-                ELSE 0
-            END AS is_current
+            (u.current_organization_id = o.id) AS is_current
         FROM organization_members om
         JOIN organizations o ON o.id = om.organization_id
         JOIN users u ON u.id = om.user_id
-        WHERE om.user_id = ?
+        WHERE om.user_id = $1
           AND om.status = 'active'
         ORDER BY is_current DESC, o.name ASC
         "#,
     )
     .bind(auth.id)
-    .fetch_all(&*db.pool)
+    .fetch_all(db.pool.as_ref())
     .await;
 
     match rows {
@@ -79,21 +77,21 @@ pub async fn set_current_organization(
     auth: AuthUser,
     payload: web::Json<SetCurrentOrganizationRequest>,
 ) -> impl Responder {
-    let membership = sqlx::query_scalar::<_, i64>(
+    let count = sqlx::query_scalar::<_, i64>(
         r#"
-        SELECT COUNT(*)
+        SELECT COUNT(*)::BIGINT
         FROM organization_members
-        WHERE user_id = ?
-          AND organization_id = ?
+        WHERE user_id = $1
+          AND organization_id = $2
           AND status = 'active'
         "#,
     )
     .bind(auth.id)
     .bind(payload.organization_id)
-    .fetch_one(&*db.pool)
+    .fetch_one(db.pool.as_ref())
     .await;
 
-    let Ok(count) = membership else {
+    let Ok(count) = count else {
         return HttpResponse::InternalServerError().body("Failed to check membership");
     };
 
@@ -108,15 +106,15 @@ pub async fn set_current_organization(
     let result = sqlx::query(
         r#"
         UPDATE users
-        SET current_organization_id = ?,
-            updated_at = ?
-        WHERE id = ?
+        SET current_organization_id = $1,
+            updated_at = $2
+        WHERE id = $3
         "#,
     )
     .bind(payload.organization_id)
     .bind(&now)
     .bind(auth.id)
-    .execute(&*db.pool)
+    .execute(db.pool.as_ref())
     .await;
 
     match result {
@@ -149,11 +147,17 @@ pub async fn create_my_organization(
         Err(e) => return HttpResponse::InternalServerError().body(e.to_string()),
     };
 
-    let rec = sqlx::query(
+    let organization_id = match sqlx::query_scalar::<_, i64>(
         r#"
-        INSERT INTO organizations
-        (name, slug, created_by_user_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO organizations (
+            name,
+            slug,
+            created_by_user_id,
+            created_at,
+            updated_at
+        )
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id
         "#,
     )
     .bind(name)
@@ -161,24 +165,27 @@ pub async fn create_my_organization(
     .bind(auth.id)
     .bind(&now)
     .bind(&now)
-    .execute(&mut *tx)
-    .await;
-
-    let rec = match rec {
-        Ok(rec) => rec,
+    .fetch_one(&mut *tx)
+    .await
+    {
+        Ok(id) => id,
         Err(e) => {
             let _ = tx.rollback().await;
             return HttpResponse::BadRequest().body(e.to_string());
         }
     };
 
-    let organization_id = rec.last_insert_rowid();
-
-    let member_result = sqlx::query(
+    if let Err(e) = sqlx::query(
         r#"
-        INSERT INTO organization_members
-        (organization_id, user_id, role, status, created_at, updated_at)
-        VALUES (?, ?, 'owner', 'active', ?, ?)
+        INSERT INTO organization_members (
+            organization_id,
+            user_id,
+            role,
+            status,
+            created_at,
+            updated_at
+        )
+        VALUES ($1, $2, 'owner', 'active', $3, $4)
         ON CONFLICT(organization_id, user_id)
         DO UPDATE SET
             role = 'owner',
@@ -191,28 +198,26 @@ pub async fn create_my_organization(
     .bind(&now)
     .bind(&now)
     .execute(&mut *tx)
-    .await;
-
-    if let Err(e) = member_result {
+    .await
+    {
         let _ = tx.rollback().await;
         return HttpResponse::InternalServerError().body(e.to_string());
     }
 
-    let current_result = sqlx::query(
+    if let Err(e) = sqlx::query(
         r#"
         UPDATE users
-        SET current_organization_id = ?,
-            updated_at = ?
-        WHERE id = ?
+        SET current_organization_id = $1,
+            updated_at = $2
+        WHERE id = $3
         "#,
     )
     .bind(organization_id)
     .bind(&now)
     .bind(auth.id)
     .execute(&mut *tx)
-    .await;
-
-    if let Err(e) = current_result {
+    .await
+    {
         let _ = tx.rollback().await;
         return HttpResponse::InternalServerError().body(e.to_string());
     }

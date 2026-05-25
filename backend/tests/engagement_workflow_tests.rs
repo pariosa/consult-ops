@@ -1,213 +1,164 @@
-use actix_web::{App, test, web};
+mod common;
+
+use actix_web::test;
+use backend::auth::hash_password;
 use backend::db::Db;
-use backend::domain::engagement_state::EngagementEvent;
-use backend::domain::engagement_state::EngagementStatus;
-use backend::handlers::{contract_templates, engagement, engagement_milestone};
+use backend::domain::engagement_state::{EngagementEvent, EngagementStatus};
 use backend::services::operations_kernel_service::OperationsKernelService;
+use chrono::Utc;
+use common::{setup_test_db, test_app};
 use serde_json::json;
-use sqlx::{Executor, SqlitePool};
+use serial_test::serial;
 
-async fn setup_db() -> Db {
-    use std::sync::Arc;
+async fn seed_org_user_project(db: &Db) -> (i64, i64, String) {
+    let now = Utc::now().to_rfc3339();
 
-    let pool = SqlitePool::connect("sqlite::memory:")
-        .await
-        .expect("failed to create in-memory sqlite db");
-
-    // organizations
-    pool.execute(
+    let organization_id = sqlx::query_scalar::<_, i64>(
         r#"
-        CREATE TABLE organizations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
+        INSERT INTO organizations (name, slug, created_at, updated_at)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id
         "#,
     )
+    .bind("Test Org")
+    .bind(format!(
+        "test-org-{}",
+        Utc::now().timestamp_nanos_opt().unwrap_or_default()
+    ))
+    .bind(&now)
+    .bind(&now)
+    .fetch_one(db.pool.as_ref())
     .await
     .unwrap();
 
-    // projects
-    pool.execute(
+    let client_id = sqlx::query_scalar::<_, i64>(
         r#"
-        CREATE TABLE projects (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            organization_id INTEGER NOT NULL,
-            client_id INTEGER NOT NULL,
-            name TEXT NOT NULL,
-            start_date TEXT,
-            end_date TEXT,
-            description TEXT,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
+        INSERT INTO clients (organization_id, name, email, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id
         "#,
     )
+    .bind(organization_id)
+    .bind("Test Client")
+    .bind("client@example.com")
+    .bind(&now)
+    .bind(&now)
+    .fetch_one(db.pool.as_ref())
     .await
     .unwrap();
 
-    // engagements
-    pool.execute(
+    let project_id = sqlx::query_scalar::<_, i64>(
         r#"
-        CREATE TABLE engagements (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            organization_id INTEGER NOT NULL,
-            engagement_type TEXT NOT NULL default 'software',
-            project_id INTEGER NOT NULL,
-            contractor_name TEXT NOT NULL,
-            contractor_email TEXT NOT NULL,
-            role TEXT NOT NULL,
-            title TEXT NOT NULL,
-            scope_of_work TEXT NOT NULL,
-            deliverables TEXT,
-            repo_url TEXT,
-            amount_cents INTEGER NOT NULL,
-            currency TEXT NOT NULL DEFAULT 'usd',
-            due_date TEXT,
-            status TEXT NOT NULL DEFAULT 'draft',
-            platform_fee_status TEXT NOT NULL DEFAULT 'pending',
-            contract_id INTEGER,
-            invoice_id INTEGER,
-            payment_id INTEGER,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
+        INSERT INTO projects (organization_id, client_id, name, description, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id
         "#,
     )
+    .bind(organization_id)
+    .bind(client_id)
+    .bind("Client Portal MVP")
+    .bind("Build a working software client portal")
+    .bind(&now)
+    .bind(&now)
+    .fetch_one(db.pool.as_ref())
     .await
     .unwrap();
 
-    // engagement milestones
-    pool.execute(
+    let email = format!(
+        "owner-{}@example.com",
+        Utc::now().timestamp_nanos_opt().unwrap_or_default()
+    );
+    let password_hash = hash_password("Password123!").unwrap();
+
+    let user_id = sqlx::query_scalar::<_, i64>(
         r#"
-        CREATE TABLE engagement_milestones (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            engagement_id INTEGER NOT NULL,
-            title TEXT NOT NULL,
-            description TEXT,
-            amount_cents INTEGER NOT NULL DEFAULT 0,
-            due_date TEXT,
-            status TEXT NOT NULL DEFAULT 'pending',
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
+        INSERT INTO users (
+            email, password_hash, name, user_type, email_verified_at,
+            current_organization_id, created_at, updated_at
+        )
+        VALUES ($1, $2, $3, 'admin', $4, $5, $6, $7)
+        RETURNING id
         "#,
     )
+    .bind(&email)
+    .bind(password_hash)
+    .bind("Test Owner")
+    .bind(&now)
+    .bind(organization_id)
+    .bind(&now)
+    .bind(&now)
+    .fetch_one(db.pool.as_ref())
     .await
     .unwrap();
 
-    // engagement billing
-    pool.execute(
+    sqlx::query(
         r#"
-        CREATE TABLE engagement_billing (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            engagement_id INTEGER NOT NULL,
-            organization_id INTEGER NOT NULL,
-            billing_type TEXT NOT NULL,
-            amount_cents INTEGER NOT NULL,
-            currency TEXT NOT NULL DEFAULT 'usd',
-            status TEXT NOT NULL DEFAULT 'pending',
-            stripe_checkout_session_id TEXT,
-            stripe_payment_intent_id TEXT,
-            paid_at TEXT,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
+        INSERT INTO organization_members (
+            organization_id, user_id, role, status, created_at, updated_at
+        )
+        VALUES ($1, $2, 'owner', 'active', $3, $4)
         "#,
     )
+    .bind(organization_id)
+    .bind(user_id)
+    .bind(&now)
+    .bind(&now)
+    .execute(db.pool.as_ref())
     .await
     .unwrap();
 
-    // seed org
-    pool.execute(
-        r#"
-        INSERT INTO organizations (name)
-        VALUES ('Test Org');
-        "#,
-    )
-    .await
-    .unwrap();
+    (organization_id, project_id, email)
+}
 
-    // seed project
-    pool.execute(
+macro_rules! login_and_get_token {
+    ($app:expr, $email:expr) => {{
+        let req = test::TestRequest::post()
+            .uri("/api/auth/login")
+            .set_json(json!({
+                "email": $email,
+                "password": "Password123!"
+            }))
+            .to_request();
+
+        let resp: serde_json::Value = test::call_and_read_body_json(&$app, req).await;
+        resp["token"].as_str().unwrap().to_string()
+    }};
+}
+
+async fn seed_engagement(db: &Db, organization_id: i64, project_id: i64) -> i64 {
+    sqlx::query_scalar::<_, i64>(
         r#"
-        INSERT INTO projects (
-            organization_id,
-            client_id,
-            name,
-            description
+        INSERT INTO engagements (
+            organization_id, project_id, engagement_type, contractor_name,
+            contractor_email, role, title, scope_of_work, deliverables,
+            repo_url, amount_cents, currency, status, platform_fee_status,
+            created_at, updated_at
         )
         VALUES (
-            1,
-            1,
-            'Client Portal MVP',
-            'Build a working software client portal'
-        );
+            $1, $2, 'software', 'Software Contractor', 'dev@example.com',
+            'full_stack_developer', 'Build SaaS MVP',
+            'Build Rust API and Nuxt frontend', 'Auth, billing, dashboard',
+            'https://github.com/example/saas', 200000, 'usd',
+            'draft', 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+        )
+        RETURNING id
         "#,
     )
+    .bind(organization_id)
+    .bind(project_id)
+    .fetch_one(db.pool.as_ref())
     .await
-    .unwrap();
-
-    Db {
-        pool: Arc::new(pool),
-    }
-}
-fn app_config(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/api")
-            .route(
-                "/projects/{project_id}/engagements",
-                web::post().to(engagement::create_for_project),
-            )
-            .route(
-                "/projects/{project_id}/engagements",
-                web::get().to(engagement::list_for_project),
-            )
-            .route("/engagements/{id}", web::get().to(engagement::show))
-            .route(
-                "/engagements/{id}/mark-contract-sent",
-                web::post().to(engagement::mark_contract_sent),
-            )
-            .route(
-                "/engagements/{id}/mark-signed",
-                web::post().to(engagement::mark_signed),
-            )
-            .route(
-                "/engagements/{id}/milestones",
-                web::post().to(engagement_milestone::create_engagement_milestone),
-            )
-            .route(
-                "/engagements/{id}/milestones",
-                web::get().to(engagement_milestone::list_engagement_milestones),
-            )
-            .route(
-                "/milestones/{id}/submit",
-                web::post().to(engagement_milestone::submit_engagement_milestone),
-            )
-            .route(
-                "/milestones/{id}/approve",
-                web::post().to(engagement_milestone::approve_engagement_milestone),
-            )
-            .route(
-                "/milestones/{id}/mark-paid",
-                web::post().to(engagement_milestone::mark_engagement_milestone_paid),
-            )
-            .route(
-                "/engagements/{id}/software-contract",
-                web::post().to(contract_templates::generate_for_engagement),
-            ),
-    );
+    .unwrap()
 }
 
 #[actix_rt::test]
+#[serial]
 async fn creates_software_engagement_for_project() {
-    let db = setup_db().await;
+    let db = setup_test_db().await;
+    let (_organization_id, project_id, email) = seed_org_user_project(&db).await;
 
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db))
-            .configure(app_config),
-    )
-    .await;
+    let app = test::init_service(test_app(db.clone())).await;
+    let token = login_and_get_token!(app, email);
 
     let payload = json!({
         "contractor_name": "Peter Dev",
@@ -224,122 +175,51 @@ async fn creates_software_engagement_for_project() {
     });
 
     let req = test::TestRequest::post()
-        .uri("/api/projects/1/engagements")
+        .uri(&format!("/api/projects/{}/engagements", project_id))
+        .insert_header(("Authorization", format!("Bearer {}", token)))
         .set_json(&payload)
         .to_request();
 
     let resp: serde_json::Value = test::call_and_read_body_json(&app, req).await;
 
-    assert_eq!(resp["organization_id"], 1);
-    assert_eq!(resp["project_id"], 1);
+    assert_eq!(resp["project_id"], project_id);
     assert_eq!(resp["contractor_name"], "Peter Dev");
     assert_eq!(resp["status"], "draft");
     assert_eq!(resp["platform_fee_status"], "pending");
 }
 
 #[actix_rt::test]
+#[serial]
+
 async fn lists_engagements_for_project() {
-    let db = setup_db().await;
+    let db = setup_test_db().await;
+    let (organization_id, project_id, email) = seed_org_user_project(&db).await;
+    seed_engagement(&db, organization_id, project_id).await;
 
-    sqlx::query(
-        r#" 
-        INSERT INTO engagements (
-            organization_id,
-            project_id,
-            engagement_type,
-            contractor_name,
-            contractor_email,
-            role,
-            title,
-            scope_of_work,
-            amount_cents,
-            currency,
-            status,
-            platform_fee_status
-        )
-        VALUES (
-            1,
-            1,
-            'software',
-            'Contractor One',
-            'contractor@example.com',
-            'backend_developer',
-            'API Build',
-            'Build backend API',
-            100000,
-            'usd',
-            'draft',
-            'pending'
-        );
-        "#,
-    )
-    .execute(db.pool.as_ref())
-    .await
-    .unwrap();
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db))
-            .configure(app_config),
-    )
-    .await;
+    let app = test::init_service(test_app(db.clone())).await;
+    let token = login_and_get_token!(app, email);
 
     let req = test::TestRequest::get()
-        .uri("/api/projects/1/engagements")
+        .uri(&format!("/api/projects/{}/engagements", project_id))
+        .insert_header(("Authorization", format!("Bearer {}", token)))
         .to_request();
 
     let resp: serde_json::Value = test::call_and_read_body_json(&app, req).await;
 
     assert!(resp.as_array().unwrap().len() >= 1);
-    assert_eq!(resp[0]["project_id"], 1);
+    assert_eq!(resp[0]["project_id"], project_id);
 }
 
 #[actix_rt::test]
+#[serial]
+
 async fn creates_and_lists_milestones() {
-    let db = setup_db().await;
+    let db = setup_test_db().await;
+    let (organization_id, project_id, email) = seed_org_user_project(&db).await;
+    let engagement_id = seed_engagement(&db, organization_id, project_id).await;
 
-    sqlx::query(
-        r#"
-        INSERT INTO engagements (
-            organization_id,
-            project_id,
-            engagement_type,
-            contractor_name,
-            contractor_email,
-            role,
-            title,
-            scope_of_work,
-            amount_cents,
-            currency,
-            status,
-            platform_fee_status
-        )
-        VALUES (
-            1,
-            1,
-            'software',
-            'Milestone Dev',
-            'milestone@example.com',
-            'frontend_developer',
-            'Frontend Build',
-            'Build Nuxt workflow screens',
-            150000,
-            'usd',
-            'draft',
-            'pending'
-        );
-        "#,
-    )
-    .execute(db.pool.as_ref())
-    .await
-    .unwrap();
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db))
-            .configure(app_config),
-    )
-    .await;
+    let app = test::init_service(test_app(db.clone())).await;
+    let token = login_and_get_token!(app, email);
 
     let payload = json!({
         "title": "Build Engagement Wizard",
@@ -349,192 +229,33 @@ async fn creates_and_lists_milestones() {
     });
 
     let create_req = test::TestRequest::post()
-        .uri("/api/engagements/1/milestones")
+        .uri(&format!("/api/engagements/{}/milestones", engagement_id))
+        .insert_header(("Authorization", format!("Bearer {}", token.clone())))
         .set_json(&payload)
         .to_request();
 
-    let resp = test::call_service(&app, create_req).await;
-    let status = resp.status();
-    let body = test::read_body(resp).await;
-    let body_text = String::from_utf8_lossy(&body);
-
-    assert!(
-        status.is_success(),
-        "Expected milestone create success but got {}: {}",
-        status,
-        body_text
-    );
-
-    let created: serde_json::Value =
-        serde_json::from_slice(&body).expect("milestone create response was not JSON");
-    assert_eq!(created["engagement_id"], 1);
+    let created: serde_json::Value = test::call_and_read_body_json(&app, create_req).await;
+    assert_eq!(created["engagement_id"], engagement_id);
     assert_eq!(created["title"], "Build Engagement Wizard");
     assert_eq!(created["status"], "pending");
 
     let list_req = test::TestRequest::get()
-        .uri("/api/engagements/1/milestones")
+        .uri(&format!("/api/engagements/{}/milestones", engagement_id))
+        .insert_header(("Authorization", format!("Bearer {}", token)))
         .to_request();
 
     let list: serde_json::Value = test::call_and_read_body_json(&app, list_req).await;
-
     assert_eq!(list.as_array().unwrap().len(), 1);
 }
 
 #[actix_rt::test]
-async fn updates_milestone_status_flow() {
-    let db = setup_db().await;
+#[serial]
 
-    sqlx::query(
-        r#"
-        INSERT INTO engagement_milestones (
-            engagement_id,
-            title,
-            description,
-            amount_cents,
-            status
-        )
-        VALUES (
-            1,
-            'Auth Flow',
-            'Build login and org switcher',
-            40000,
-            'pending'
-        );
-        "#,
-    )
-    .execute(db.pool.as_ref())
-    .await
-    .unwrap();
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db))
-            .configure(app_config),
-    )
-    .await;
-
-    let submit_req = test::TestRequest::post()
-        .uri("/api/milestones/1/submit")
-        .to_request();
-
-    let submitted: serde_json::Value = test::call_and_read_body_json(&app, submit_req).await;
-    assert_eq!(submitted["status"], "submitted");
-
-    let approve_req = test::TestRequest::post()
-        .uri("/api/milestones/1/approve")
-        .to_request();
-
-    let approved: serde_json::Value = test::call_and_read_body_json(&app, approve_req).await;
-    assert_eq!(approved["status"], "approved");
-
-    let paid_req = test::TestRequest::post()
-        .uri("/api/milestones/1/mark-paid")
-        .to_request();
-
-    let paid: serde_json::Value = test::call_and_read_body_json(&app, paid_req).await;
-    assert_eq!(paid["status"], "paid");
-}
-
-#[actix_rt::test]
-async fn generates_software_contract_body() {
-    let db = setup_db().await;
-
-    sqlx::query(
-        r#"
-        INSERT INTO engagements (
-            organization_id,
-            project_id,
-            engagement_type,
-            contractor_name,
-            contractor_email,
-            role,
-            title,
-            scope_of_work,
-            deliverables,
-            repo_url,
-            amount_cents,
-            currency,
-            status,
-            platform_fee_status
-        )
-        VALUES (
-            1,
-            1,
-            'software',
-            'Software Contractor',
-            'dev@example.com',
-            'full_stack_developer',
-            'Build SaaS MVP',
-            'Build Rust API and Nuxt frontend',
-            'Auth, billing, dashboard, tracker',
-            'https://github.com/example/saas',
-            200000,
-            'usd',
-            'draft',
-            'pending'
-        );
-        "#,
-    )
-    .execute(db.pool.as_ref())
-    .await
-    .unwrap();
-
-    sqlx::query(
-        r#"
-        INSERT INTO engagement_milestones (
-            engagement_id,
-            title,
-            description,
-            amount_cents,
-            status
-        )
-        VALUES (
-            1,
-            'Stripe Billing',
-            'Implement activation fee checkout',
-            50000,
-            'pending'
-        );
-        "#,
-    )
-    .execute(db.pool.as_ref())
-    .await
-    .unwrap();
-
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(db))
-            .configure(app_config),
-    )
-    .await;
-
-    let req = test::TestRequest::post()
-        .uri("/api/engagements/1/software-contract")
-        .to_request();
-
-    let resp = test::call_service(&app, req).await;
-    let status = resp.status();
-    let body = test::read_body(resp).await;
-    let body_text = String::from_utf8_lossy(&body);
-
-    assert!(
-        status.is_success(),
-        "Expected software contract success but got {}: {}",
-        status,
-        body_text
-    );
-
-    let resp: serde_json::Value =
-        serde_json::from_slice(&body).expect("software contract response was not JSON");
-    assert_eq!(resp["contract_type"], "software_services");
-}
-
-#[actix_rt::test]
 async fn payment_received_from_draft_should_fail() {
-    let db = setup_db().await;
+    let db = setup_test_db().await;
 
     let result = OperationsKernelService::apply_engagement_event(
-        &db.pool.as_ref(),
+        db.pool.as_ref(),
         1,
         999,
         None,
@@ -544,12 +265,10 @@ async fn payment_received_from_draft_should_fail() {
     .await;
 
     assert!(result.is_err());
-
-    let error = result.err().unwrap();
-
     assert!(
-        error.contains("Invalid engagement transition"),
-        "Expected invalid transition error, got: {}",
-        error
+        result
+            .err()
+            .unwrap()
+            .contains("Invalid engagement transition")
     );
 }

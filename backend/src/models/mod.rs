@@ -15,7 +15,9 @@ pub mod party;
 pub mod party_payment_profile;
 pub mod payment;
 pub mod project;
+pub mod subscription;
 pub mod user;
+pub use agreement_payout_rule::*;
 pub use client::Client;
 pub use contract::Contract;
 pub use engagement::Engagement;
@@ -24,13 +26,12 @@ pub use engagement_billing::{
 };
 pub use engagement_milestone::EngagementMilestone;
 pub use invoice::Invoice;
-pub use organization::{CreateOrganization, Organization, UpdateOrganization};
-pub use payment::Payment;
-pub use project::Project;
-
-pub use agreement_payout_rule::*;
 pub use operational_agreement::*;
 pub use operational_transaction::*;
+pub use organization::{CreateOrganization, Organization, UpdateOrganization};
 pub use organization_invitation::*;
 pub use organization_member::*;
 pub use party::*;
+pub use payment::Payment;
+pub use project::Project;
+pub use subscription::{OrganizationSubscription, UpsertOrganizationSubscription};
