@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
 
-test('milestone submit and approve actions refresh the operational timeline', async ({ page }) => {
+test('milestone submit and approve actions refresh the operational timeline', async ({
+  page,
+}) => {
   let milestoneStatus = 'pending';
   let events: any[] = [
     {
@@ -12,28 +14,30 @@ test('milestone submit and approve actions refresh the operational timeline', as
     },
   ];
 
-  await page.route('**/api/engagements/6', async route => {
+  await page.route('**/api/engagements/6', async (route) => {
     await route.fulfill({
       json: {
         id: 6,
         title: 'Build Consulting Ops Platform',
         contractor_name: 'Peter Ariosa',
         contractor_email: 'ariosa@gmail.com',
-        scope_of_work: 'Build contract, milestone, billing, and event workflows.',
+        scope_of_work:
+          'Build contract, milestone, billing, and event workflows.',
         status: 'active',
         platform_fee_status: 'paid',
       },
     });
   });
 
-  await page.route('**/api/engagements/6/milestones', async route => {
+  await page.route('**/api/engagements/6/milestones', async (route) => {
     await route.fulfill({
       json: [
         {
           id: 11,
           engagement_id: 6,
           title: 'Implement operational timeline',
-          description: 'Create auditable event history for engagement workflow.',
+          description:
+            'Create auditable event history for engagement workflow.',
           amount_cents: 250000,
           due_date: '2026-05-20',
           status: milestoneStatus,
@@ -43,11 +47,11 @@ test('milestone submit and approve actions refresh the operational timeline', as
     });
   });
 
-  await page.route('**/api/engagements/6/events', async route => {
+  await page.route('**/api/engagements/6/events', async (route) => {
     await route.fulfill({ json: events });
   });
 
-  await page.route('**/api/engagements/6/billing', async route => {
+  await page.route('**/api/engagements/6/billing', async (route) => {
     await route.fulfill({
       json: [
         {
@@ -67,7 +71,7 @@ test('milestone submit and approve actions refresh the operational timeline', as
     });
   });
 
-  await page.route('**/api/milestones/11/submit', async route => {
+  await page.route('**/api/milestones/11/submit', async (route) => {
     milestoneStatus = 'submitted';
     events = [
       {
@@ -94,7 +98,7 @@ test('milestone submit and approve actions refresh the operational timeline', as
     });
   });
 
-  await page.route('**/api/milestones/11/approve', async route => {
+  await page.route('**/api/milestones/11/approve', async (route) => {
     milestoneStatus = 'approved';
     events = [
       {
@@ -123,8 +127,12 @@ test('milestone submit and approve actions refresh the operational timeline', as
 
   await page.goto('/engagements/6');
 
-  await expect(page.getByText('Implement operational timeline')).toBeVisible();
-  await expect(page.getByText('Status: pending')).toBeVisible();
+  const milestoneCard = page
+    .locator('.milestone-row')
+    .filter({ hasText: 'Implement operational timeline' });
+
+  await expect(milestoneCard).toBeVisible();
+  await expect(milestoneCard).toContainText('Status: pending');
 
   await page.getByRole('button', { name: /^submit$/i }).click();
 

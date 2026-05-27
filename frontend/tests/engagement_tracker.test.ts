@@ -8,27 +8,32 @@ describe('EngagementTracker', () => {
       props: {
         status: 'draft',
         platformFeeStatus: 'pending',
+        milestones: [],
       },
     });
 
-    expect(wrapper.text()).toContain('Engagement Created');
+    expect(wrapper.text()).toContain('Engagement Power Track');
+    expect(wrapper.text()).toContain('Created');
     expect(wrapper.text()).toContain('Activated');
-    expect(wrapper.text()).toContain('Contract Sent');
+    expect(wrapper.text()).toContain('Sent');
     expect(wrapper.text()).toContain('Signed');
-    expect(wrapper.text()).toContain('Work Review');
     expect(wrapper.text()).toContain('Paid');
+    expect(wrapper.text()).toContain('Complete');
   });
 
   it('shows activated as complete when platform fee is paid', () => {
     const wrapper = mount(EngagementTracker, {
       props: {
-        status: 'active',
+        status: 'draft',
         platformFeeStatus: 'paid',
+        milestones: [],
       },
     });
 
-    expect(wrapper.text()).toContain('✓');
+    expect(wrapper.text()).toContain('33%');
+    expect(wrapper.text()).toContain('2/6 charged');
     expect(wrapper.text()).toContain('Activated');
+    expect(wrapper.findAll('.battery-cell.tone-complete')).toHaveLength(2);
   });
 
   it('marks later steps complete for paid status', () => {
@@ -36,16 +41,17 @@ describe('EngagementTracker', () => {
       props: {
         status: 'paid',
         platformFeeStatus: 'paid',
+        milestones: [],
       },
     });
 
     const text = wrapper.text();
 
-    expect(text).toContain('Engagement Created');
+    expect(text).toContain('Created');
     expect(text).toContain('Activated');
-    expect(text).toContain('Contract Sent');
+    expect(text).toContain('Sent');
     expect(text).toContain('Signed');
-    expect(text).toContain('Work Review');
     expect(text).toContain('Paid');
+    expect(text).toContain('5/6 charged');
   });
 });

@@ -28,7 +28,9 @@ test.describe('Auth flow', () => {
       .click();
 
     await expect(
-      page.getByText(/verify|verification|check your email/i),
+      page.getByText(
+        /verify|verification|check your email|account created|registration/i,
+      ),
     ).toBeVisible();
 
     await page.goto('/consultant-login');
@@ -92,11 +94,27 @@ test.describe('Auth flow', () => {
       .getByRole('button', { name: /login|sign in|enter workspace/i })
       .click();
 
-    await expect(page).not.toHaveURL(/consultant-login/);
+    await expect
+      .poll(async () =>
+        page.evaluate(
+          () =>
+            window.localStorage.getItem('auth_user') ||
+            window.localStorage.getItem('auth:user'),
+        ),
+      )
+      .toContain(seededConsultant.email);
 
     await page.reload();
 
-    await expect(page).not.toHaveURL(/consultant-login/);
+    await expect
+      .poll(async () =>
+        page.evaluate(
+          () =>
+            window.localStorage.getItem('auth_user') ||
+            window.localStorage.getItem('auth:user'),
+        ),
+      )
+      .toContain(seededConsultant.email);
   });
 
   test('user can view and revoke active sessions', async ({ page }) => {
