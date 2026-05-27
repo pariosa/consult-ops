@@ -4,8 +4,38 @@ const props = defineProps({
     type: Array,
     default: () => [],
   },
+  title: {
+    type: String,
+    default: 'Operational Timeline',
+  },
 });
+function eventMetadata(event: any) {
+  if (!event.metadata) return {};
 
+  if (typeof event.metadata === 'object') {
+    return event.metadata;
+  }
+
+  try {
+    return JSON.parse(event.metadata);
+  } catch {
+    return {};
+  }
+}
+
+function eventMessage(event: any) {
+  const metadata = eventMetadata(event);
+
+  if (metadata.message) return metadata.message;
+
+  const label = formatEvent(event.event_type);
+
+  if (event.from_status || event.to_status) {
+    return `${event.from_status || '—'} → ${event.to_status || '—'}`;
+  }
+
+  return `${label} was recorded.`;
+}
 function formatEvent(eventType: string) {
   return eventType.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ');
 }
@@ -34,8 +64,7 @@ function eventGroup(eventType: string) {
 <template>
   <section class="portal-section timeline-section">
     <p class="eyebrow">Operational History</p>
-    <h2>Engagement Timeline</h2>
-
+    <h2>{{ title }}</h2>
     <div v-if="!events.length" class="empty-state">
       No operational events recorded yet.
     </div>
@@ -55,8 +84,14 @@ function eventGroup(eventType: string) {
             <span class="event-pill">{{ eventGroup(event.event_type) }}</span>
           </div>
 
-          <p v-if="event.from_status || event.to_status">
-            {{ event.from_status || '—' }} → {{ event.to_status || '—' }}
+          <p>{{ eventMessage(event) }}</p>
+          <pre
+            v-if="Object.keys(eventMetadata(event)).length"
+            class="timeline-metadata"
+            >{{ eventMetadata(event) }}</pre
+          >
+          <p v-if="event.actor_name" class="timeline-actor">
+            By {{ event.actor_name }}
           </p>
 
           <small>{{ event.created_at }}</small>
@@ -194,5 +229,19 @@ function eventGroup(eventType: string) {
 .event-system .event-pill {
   background: #94a3b8;
   color: #0f172a;
+}
+.timeline-actor {
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+
+.timeline-metadata {
+  border-radius: 12px;
+  background: rgba(2, 12, 23, 0.75);
+  color: #cbd5e1;
+  font-size: 0.75rem;
+  margin-top: 10px;
+  overflow-x: auto;
+  padding: 10px;
 }
 </style>
