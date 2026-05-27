@@ -30,10 +30,10 @@ use crate::handlers::{
     mark_engagement_milestone_paid, mark_notification_read, mark_party_payer_authorized_dev,
     mark_party_payout_ready_dev, mark_signed, mark_subscription_active_dev,
     mark_transaction_failed, mark_transaction_paid, mark_transaction_processing,
-    reopen_engagement_milestone, revoke_user_sessions, set_current_organization, show,
-    stripe_webhook, submit_engagement_milestone, update_engagement_milestone, update_organization,
-    update_organization_member, update_user_type, upsert_organization_subscription,
-    upsert_party_payment_profile, verify_party,
+    reopen_engagement_milestone, resend_contract, revoke_user_sessions, set_current_organization,
+    show, stripe_webhook, submit_engagement_milestone, update_contract_recipient,
+    update_engagement_milestone, update_organization, update_organization_member, update_user_type,
+    upsert_organization_subscription, upsert_party_payment_profile, verify_party,
 };
 use actix_web::web;
 pub fn config(cfg: &mut web::ServiceConfig) {
@@ -225,6 +225,14 @@ pub fn config(cfg: &mut web::ServiceConfig) {
                 web::post().to(mark_contract_sent),
             )
             .route("/engagements/{id}/mark-signed", web::post().to(mark_signed))
+            .route(
+                "/engagements/{id}/contract-recipient",
+                web::patch().to(update_contract_recipient),
+            )
+            .route(
+                "/engagements/{id}/resend-contract",
+                web::post().to(resend_contract),
+            )
             .route(
                 "/engagements/{id}/milestones",
                 web::post().to(create_engagement_milestone),

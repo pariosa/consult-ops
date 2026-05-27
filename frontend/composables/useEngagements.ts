@@ -1,26 +1,46 @@
 import { useApi } from './useApi';
 
 export function useEngagements() {
-  const api = useApi();
+  const { get, post, apiFetch } = useApi();
+  async function updateContractRecipient(id: number, contractor_email: string) {
+    return await apiFetch(`/api/engagements/${id}/contract-recipient`, {
+      method: 'PATCH',
+      body: {
+        contractor_email,
+      },
+    });
+  }
+
+  async function resendContract(id: number) {
+    return await apiFetch(`/api/engagements/${id}/resend-contract`, {
+      method: 'POST',
+    });
+  }
 
   const getProjectEngagements = (projectId: number) =>
-    api.get(`/api/projects/${projectId}/engagements`);
+    get(`/api/projects/${projectId}/engagements`);
 
-  const getEngagement = (id: number) => api.get(`/api/engagements/${id}`);
+  const getEngagement = (id: number) => get(`/api/engagements/${id}`);
 
   const createEngagement = (projectId: number, payload: any) =>
-    api.post(`/api/projects/${projectId}/engagements`, payload);
+    post(`/api/projects/${projectId}/engagements`, payload);
 
   const generateSoftwareContract = (id: number) =>
-    api.post(`/api/engagements/${id}/software-contract`, {});
+    post(`/api/engagements/${id}/software-contract`, {});
 
   const markContractSent = (id: number) =>
-    api.post(`/api/engagements/${id}/mark-contract-sent`, {});
+    post(`/api/engagements/${id}/mark-contract-sent`, {});
 
   const markSigned = (id: number) =>
-    api.post(`/api/engagements/${id}/mark-signed`, {});
+    post(`/api/engagements/${id}/mark-signed`, {});
+
+  const completeEngagement = (id: number) =>
+    post(`/api/engagements/${id}/complete`, {});
 
   return {
+    updateContractRecipient,
+    resendContract,
+    completeEngagement,
     getProjectEngagements,
     getEngagement,
     createEngagement,

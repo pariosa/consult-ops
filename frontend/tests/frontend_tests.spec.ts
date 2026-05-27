@@ -154,9 +154,7 @@ describe('AppHeader', () => {
     });
 
     expect(wrapper.text()).toContain('Consult Ops');
-    expect(wrapper.text()).toContain(
-      'Modern operations for service businesses',
-    );
+    expect(wrapper.text()).toContain('Operational certainty for service work');
     expect(wrapper.text()).toContain('Consultant Login');
     expect(wrapper.text()).toContain('Client Login');
     expect(wrapper.text()).toContain('Admin');

@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, PgPool, Result as SqlxResult};
 
+use crate::db::Db;
+
 #[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct Engagement {
     pub id: i64,
@@ -275,6 +277,21 @@ impl Engagement {
         )
         .bind(id)
         .fetch_one(db)
+        .await
+    }
+    async fn engagement_email_context(
+        db: &Db,
+        engagement_id: i64,
+    ) -> Result<(String, String), sqlx::Error> {
+        sqlx::query_as::<_, (String, String)>(
+            r#"
+        SELECT contractor_email, title
+        FROM engagements
+        WHERE id = $1
+        "#,
+        )
+        .bind(engagement_id)
+        .fetch_one(db.pool.as_ref())
         .await
     }
 }

@@ -1,41 +1,51 @@
 <!-- frontend/pages/engagements/[id]/index.vue-->
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useEngagementMilestones } from '~/composables/useEngagementMilestones';
 import { useEngagements } from '~/composables/useEngagements';
 import EngagementTracker from '~/components/Engagements/EngagementTracker.vue';
 import SoftwareContractPreview from '~/components/Contracts/SoftwareContractPreview.vue';
 import OperationalTimeline from '~/components/Operations/OperationalTimeline.vue';
 import { useOperationalEvents } from '~/composables/useOperationalEvents';
-
+import EngagementNextActionCard from '~/components/Operations/EngagementNextActionCard.vue';
 import { useEngagementBilling } from '~/composables/useEngagementBilling';
 
-const { getEngagementBilling, createActivationCheckout, markBillingPaid } =
-  useEngagementBilling();
-
-const checkoutLoading = ref(false);
-const billingItems = ref<any[]>([]);
 const { getEngagementEvents } = useOperationalEvents();
-const operationalEvents = ref<any[]>([]);
 const route = useRoute();
-const engagementId = Number(route.params.id);
-
 const router = useRouter();
-const {
-  getEngagement,
-  generateSoftwareContract,
-  markContractSent,
-  markSigned,
-} = useEngagements();
-
-const { getMilestones, submitMilestone, approveMilestone, markMilestonePaid } =
-  useEngagementMilestones();
+const engagementId = Number(route.params.id);
 
 const engagement = ref<any>(null);
 const milestones = ref<any[]>([]);
 const contractPreview = ref('');
 const loading = ref(true);
+const success = ref('');
+
+const recipientEmail = ref('');
+const recipientSaving = ref(false);
+const resendLoading = ref(false);
+const checkoutLoading = ref(false);
+const billingItems = ref<any[]>([]);
+const operationalEvents = ref<any[]>([]);
 const error = ref('');
+const safeMilestones = computed(() =>
+  Array.isArray(milestones.value) ? milestones.value : [],
+);
+const { getEngagementBilling, createActivationCheckout, markBillingPaid } =
+  useEngagementBilling();
+
+const {
+  getEngagement,
+  generateSoftwareContract,
+  markContractSent,
+  markSigned,
+  completeEngagement,
+  updateContractRecipient,
+  resendContract,
+} = useEngagements();
+
+const { getMilestones, submitMilestone, approveMilestone, markMilestonePaid } =
+  useEngagementMilestones();
 
 async function refresh() {
   loading.value = true;
@@ -43,6 +53,7 @@ async function refresh() {
 
   try {
     engagement.value = await getEngagement(engagementId);
+    recipientEmail.value = engagement.value?.contractor_email || '';
     milestones.value = await getMilestones(engagementId);
     operationalEvents.value = await getEngagementEvents(engagementId);
     billingItems.value = await getEngagementBilling(engagementId);
@@ -59,13 +70,6 @@ async function previewContract() {
 }
 function goToAgreements() {
   router.push(`/engagements/${engagementId}/agreements`);
-}
-async function sendContract() {
-  engagement.value = await markContractSent(engagementId);
-}
-
-async function markSignedLocal() {
-  engagement.value = await markSigned(engagementId);
 }
 
 async function submitMilestoneLocal(id: number) {
@@ -86,12 +90,10 @@ function goToTransactions() {
   router.push(`/engagements/${engagementId}/transactions`);
 }
 function goToMilestones() {
-  console.log('goToMilestones clicked', engagementId);
   router.push(`/engagements/${engagementId}/milestones`);
 }
 
 function goToBilling() {
-  console.log('goToBilling clicked', engagementId);
   router.push(`/engagements/${engagementId}/billing`);
 }
 async function createActivationFeeLocal() {
@@ -126,6 +128,126 @@ async function payActivationFee() {
     checkoutLoading.value = false;
   }
 }
+async function updateRecipientLocal() {
+  recipientSaving.value = true;
+  error.value = '';
+  success.value = '';
+
+  try {
+    await updateContractRecipient(engagementId, recipientEmail.value);
+    success.value = 'Contract recipient updated.';
+    await refresh();
+  } catch (err: any) {
+    error.value =
+      err?.data?.error ||
+      err?.message ||
+      'Failed to update contract recipient.';
+  } finally {
+    recipientSaving.value = false;
+  }
+}
+
+async function resendContractLocal() {
+  resendLoading.value = true;
+  error.value = '';
+  success.value = '';
+
+  try {
+    await resendContract(engagementId);
+    success.value = 'Contract resent.';
+    await refresh();
+  } catch (err: any) {
+    error.value =
+      err?.data?.error || err?.message || 'Failed to resend contract.';
+  } finally {
+    resendLoading.value = false;
+  }
+}
+
+async function sendContract() {
+  error.value = '';
+  success.value = '';
+
+  try {
+    await markContractSent(engagementId);
+    success.value = 'Contract marked sent.';
+    await refresh();
+  } catch (err: any) {
+    error.value =
+      err?.data?.error || err?.message || 'Failed to mark contract sent.';
+  }
+}
+
+async function markSignedLocal() {
+  error.value = '';
+  success.value = '';
+
+  try {
+    await markSigned(engagementId);
+    success.value = 'Contract marked signed.';
+    await refresh();
+  } catch (err: any) {
+    error.value =
+      err?.data?.error || err?.message || 'Failed to mark contract signed.';
+  }
+}
+
+async function completeEngagementLocal() {
+  error.value = '';
+  success.value = '';
+
+  try {
+    await completeEngagement(engagementId);
+    success.value = 'Engagement completed.';
+    await refresh();
+  } catch (err: any) {
+    error.value =
+      err?.data?.error || err?.message || 'Failed to complete engagement.';
+  }
+}
+
+const canSendOrResendContract = computed(() => {
+  return ![
+    'contract_signed',
+    'active',
+    'paid',
+    'completed',
+    'cancelled',
+  ].includes(engagement.value?.status);
+});
+
+const canEditContractDelivery = computed(() => {
+  return ![
+    'contract_signed',
+    'active',
+    'paid',
+    'completed',
+    'cancelled',
+  ].includes(engagement.value?.status);
+});
+
+const canSendContract = computed(() => {
+  return ['draft', 'created'].includes(engagement.value?.status);
+});
+
+const canResendContract = computed(() => {
+  return engagement.value?.status === 'contract_sent';
+});
+
+const canMarkContractSigned = computed(() => {
+  return engagement.value?.status === 'contract_sent';
+});
+
+const canCompleteEngagement = computed(() => {
+  return (
+    engagement.value &&
+    safeMilestones.value.length > 0 &&
+    safeMilestones.value.every((m) =>
+      ['paid', 'completed'].includes(m.status),
+    ) &&
+    engagement.value.status !== 'completed'
+  );
+});
 onMounted(refresh);
 </script>
 
@@ -141,21 +263,91 @@ onMounted(refresh);
     <section v-else-if="error" class="form-error">
       {{ error }}
     </section>
-
-    <template v-else>
+    <template v-else-if="engagement">
       <section class="portal-section engagement-hero">
-        <p class="eyebrow">Software Engagement</p>
-        <h2>{{ engagement.title }}</h2>
+        <p class="eyebrow">{{ engagement.title }}</p>
+        <h2>{{ engagement.deliverables }}</h2>
         <p class="contractor-line">
           {{ engagement.contractor_name }} — {{ engagement.contractor_email }}
         </p>
         <p class="scope-line">{{ engagement.scope_of_work }}</p>
       </section>
+      <EngagementNextActionCard v-if="engagement" :engagement="engagement" />
       <EngagementTracker
         :status="engagement.status"
         :platform-fee-status="engagement.platform_fee_status"
+        :milestones="safeMilestones"
       />
       <OperationalTimeline :events="operationalEvents" />
+
+      <section class="portal-section">
+        <div class="section-header">
+          <div>
+            <p class="eyebrow">Contract Delivery</p>
+            <h2>Recipient & Resend Controls</h2>
+            <p>
+              Update the recipient or resend the contract before it is signed or
+              activated.
+            </p>
+          </div>
+        </div>
+
+        <div class="delivery-grid">
+          <div>
+            <label for="contract-recipient-email">Recipient Email</label>
+            <input
+              id="contract-recipient-email"
+              v-model="recipientEmail"
+              class="form-input"
+              type="email"
+              :disabled="!canEditContractDelivery || recipientSaving"
+            />
+          </div>
+
+          <button
+            class="form-button"
+            :disabled="
+              !canEditContractDelivery || recipientSaving || !recipientEmail
+            "
+            @click="updateRecipientLocal"
+          >
+            {{ recipientSaving ? 'Saving...' : 'Update Recipient' }}
+          </button>
+
+          <button
+            v-if="canSendContract"
+            class="form-button"
+            @click="sendContract"
+          >
+            Send Contract
+          </button>
+
+          <button
+            v-if="canResendContract"
+            class="form-button"
+            :disabled="resendLoading"
+            @click="resendContractLocal"
+          >
+            {{ resendLoading ? 'Resending...' : 'Resend Contract' }}
+          </button>
+
+          <button
+            v-if="canMarkContractSigned"
+            class="form-button"
+            @click="markSignedLocal"
+          >
+            Mark Contract Signed
+          </button>
+
+          <button
+            v-if="!canEditContractDelivery"
+            class="form-button secondary"
+            disabled
+          >
+            Contract delivery locked after signing or activation
+          </button>
+        </div>
+      </section>
       <section class="portal-section action-grid">
         <button class="form-button" @click="previewContract">
           Generate Contract Preview
@@ -163,13 +355,15 @@ onMounted(refresh);
         <button type="button" class="form-button" @click="goToAgreements">
           Agreement Rules
         </button>
-        <button class="form-button" @click="sendContract">
-          Mark Contract Sent
-        </button>
 
-        <button class="form-button" @click="markSignedLocal">
+        <button
+          v-if="canMarkContractSigned"
+          class="form-button"
+          @click="markSignedLocal"
+        >
           Mark Contract Signed
         </button>
+
         <button type="button" class="form-button" @click="goToMilestones">
           Manage Milestones
         </button>
@@ -187,7 +381,26 @@ onMounted(refresh);
           Finance Dashboard
         </button>
       </section>
+      <section
+        v-if="canCompleteEngagement"
+        class="portal-section completion-panel"
+      >
+        <p class="eyebrow">Ready For Closeout</p>
 
+        <h2>All Milestones Completed</h2>
+
+        <p>
+          All milestone obligations have been fulfilled and paid. Finalize the
+          engagement to close the operational workflow.
+        </p>
+
+        <button
+          class="form-button final-signoff"
+          @click="completeEngagementLocal"
+        >
+          Final Sign-Off / Complete Engagement
+        </button>
+      </section>
       <SoftwareContractPreview v-if="contractPreview" :body="contractPreview" />
 
       <section class="portal-section">
@@ -196,10 +409,10 @@ onMounted(refresh);
           <p>Submit, approve, and mark work as paid.</p>
         </div>
 
-        <div v-if="!milestones.length">No milestones yet.</div>
+        <div v-if="!safeMilestones.length">No milestones yet.</div>
 
         <div
-          v-for="milestone in milestones"
+          v-for="milestone in safeMilestones"
           :key="milestone.id"
           class="ops-card milestone-row"
         >
@@ -423,5 +636,34 @@ onMounted(refresh);
     grid-template-columns: 1fr 220px;
     align-items: center;
   }
+}
+.final-signoff {
+  background: linear-gradient(90deg, #34d399, #a7f3d0);
+}
+.completion-panel {
+  border: 1px solid rgba(52, 211, 153, 0.28);
+  background: radial-gradient(
+    circle at top,
+    rgba(52, 211, 153, 0.16),
+    rgba(2, 12, 23, 0.96)
+  );
+  box-shadow:
+    0 0 40px rgba(52, 211, 153, 0.12),
+    0 18px 50px rgba(0, 0, 0, 0.28);
+}
+
+.completion-panel h2 {
+  color: #d1fae5;
+}
+
+.final-signoff {
+  background: linear-gradient(90deg, #34d399, #6ee7b7, #a7f3d0);
+  box-shadow:
+    0 0 18px rgba(52, 211, 153, 0.35),
+    0 0 48px rgba(52, 211, 153, 0.18);
+}
+
+.final-signoff:hover {
+  transform: translateY(-2px) scale(1.01);
 }
 </style>

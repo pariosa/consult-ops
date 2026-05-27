@@ -175,4 +175,16 @@ impl EmailNotificationService {
         })
         .await
     }
+
+    pub async fn engagement_completed(to: String, title: String) -> Result<(), String> {
+        Self::send(EmailMessage {
+            to,
+            subject: "Engagement completed".to_string(),
+            body: format!(
+                "The engagement has been completed in Consult Ops.\n\nEngagement: {}",
+                title
+            ),
+        })
+        .await
+    }
 }

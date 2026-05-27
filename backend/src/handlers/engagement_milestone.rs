@@ -8,18 +8,53 @@ use crate::models::engagement_milestone::{
 };
 use crate::models::operational_agreement::OperationalAgreement;
 use crate::services::authz::{require_org_member, require_org_role};
+use crate::services::email_notification_service::EmailNotificationService;
 use crate::services::event_service::EventService;
 use crate::services::notification_email_recipient_service::NotificationRecipientService;
 use crate::services::notification_service::NotificationService;
 use crate::services::transaction_workflow_service::TransactionWorkflowService;
 use actix_web::ResponseError;
 
+async fn milestone_email_context(
+    db: &Db,
+    milestone_id: i64,
+) -> Result<(String, String), sqlx::Error> {
+    sqlx::query_as::<_, (String, String)>(
+        r#"
+        SELECT e.contractor_email, m.title
+        FROM engagement_milestones m
+        JOIN engagements e ON e.id = m.engagement_id
+        WHERE m.id = $1
+        "#,
+    )
+    .bind(milestone_id)
+    .fetch_one(db.pool.as_ref())
+    .await
+}
+
 async fn notify_milestone_parties(
     db: &Db,
     engagement_id: i64,
+    milestone_id: i64,
     milestone_title: String,
     notification_type: &str,
 ) {
+    if let Ok((contractor_email, title)) = milestone_email_context(db, milestone_id).await {
+        let email_result = match notification_type {
+            "approved" => {
+                EmailNotificationService::milestone_approved(contractor_email.clone(), title).await
+            }
+            "paid" => {
+                EmailNotificationService::milestone_paid(contractor_email.clone(), title).await
+            }
+            _ => Ok(()),
+        };
+
+        if let Err(err) = email_result {
+            eprintln!("milestone outbound email error: {:?}", err);
+        }
+    }
+
     let agreement =
         match OperationalAgreement::latest_for_engagement(db.pool.as_ref(), engagement_id).await {
             Ok(Some(agreement)) => agreement,
@@ -352,7 +387,14 @@ pub async fn approve_engagement_milestone(
                     organization_id, item.engagement_id, milestone_id, item.amount_cents
                 );
             }
-            notify_milestone_parties(&db, item.engagement_id, item.title.clone(), "approved").await;
+            notify_milestone_parties(
+                &db,
+                item.engagement_id,
+                milestone_id,
+                item.title.clone(),
+                "approved",
+            )
+            .await;
             HttpResponse::Ok().json(item)
         }
 
@@ -387,7 +429,6 @@ pub async fn mark_engagement_milestone_paid(
     {
         return err.error_response();
     }
-    println!("Marking milestone paid: {}", milestone_id);
 
     match EngagementMilestone::update_status(db.pool.as_ref(), milestone_id, "paid").await {
         Ok(item) => {
@@ -407,7 +448,14 @@ pub async fn mark_engagement_milestone_paid(
                     }),
                 )
                 .await;
-                notify_milestone_parties(&db, item.engagement_id, item.title.clone(), "paid").await;
+                notify_milestone_parties(
+                    &db,
+                    item.engagement_id,
+                    milestone_id,
+                    item.title.clone(),
+                    "paid",
+                )
+                .await;
             }
             HttpResponse::Ok().json(item)
         }
