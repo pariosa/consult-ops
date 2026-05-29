@@ -56,8 +56,8 @@ pub use user::{create_user, get_user_by_id, get_users, update_user_type};
 pub use contract_templates::generate_for_engagement;
 pub use engagement::{
     activate_engagement, cancel_engagement, complete_engagement, create_for_project,
-    dispute_engagement, list_for_project, mark_contract_sent, mark_signed, resend_contract, show,
-    update_contract_recipient,
+    dispute_engagement, engagement_transaction_readiness, list_for_project, mark_contract_sent,
+    mark_signed, resend_contract, show, update_contract_recipient,
 };
 pub use engagement_billing::{
     attach_checkout_session, create_activation_checkout, create_activation_fee,

@@ -42,10 +42,17 @@ const {
   completeEngagement,
   updateContractRecipient,
   resendContract,
+  getTransactionReadiness,
 } = useEngagements();
 
 const { getMilestones, submitMilestone, approveMilestone, markMilestonePaid } =
   useEngagementMilestones();
+
+const transactionReadiness = ref({
+  has_agreement: false,
+  has_payout_rules: false,
+  ready: false,
+});
 
 async function refresh() {
   loading.value = true;
@@ -55,6 +62,7 @@ async function refresh() {
     engagement.value = await getEngagement(engagementId);
     recipientEmail.value = engagement.value?.contractor_email || '';
     milestones.value = await getMilestones(engagementId);
+    transactionReadiness.value = await getTransactionReadiness(engagementId);
     operationalEvents.value = await getEngagementEvents(engagementId);
     billingItems.value = await getEngagementBilling(engagementId);
   } catch (err: any) {
@@ -248,6 +256,11 @@ const canCompleteEngagement = computed(() => {
     engagement.value.status !== 'completed'
   );
 });
+
+const agreementReady = computed(() => {
+  return engagement.value?.agreement_ready === true;
+});
+
 onMounted(refresh);
 </script>
 
@@ -423,11 +436,20 @@ onMounted(refresh);
           </div>
 
           <div class="milestone-actions">
-            <button @click="submitMilestoneLocal(milestone.id)">Submit</button>
-            <button @click="approveMilestoneLocal(milestone.id)">
-              Approve
+            <button
+              v-if="!agreementReady"
+              type="button"
+              class="form-button secondary"
+              @click="goToAgreements"
+            >
+              Configure Agreement Rules Before Payment
             </button>
-            <button @click="markPaidLocal(milestone.id)">Mark Paid</button>
+            <template v-else>
+              <button @click="approveMilestoneLocal(milestone.id)">
+                Approve
+              </button>
+              <button @click="markPaidLocal(milestone.id)">Mark Paid</button>
+            </template>
           </div>
         </div>
       </section>

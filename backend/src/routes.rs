@@ -13,16 +13,16 @@ use crate::handlers::{
     create_party_from_client, create_party_from_user, create_payment, create_payout_rule,
     create_platform_organization, create_platform_user, create_project, create_user,
     delete_organization_member, disable_user, dispute_engagement, enable_user,
-    force_password_reset, generate_for_engagement, get_admin_summary, get_client_portal_summary,
-    get_clients, get_contracts, get_invoices, get_me, get_my_organization, get_organization,
-    get_organization_clients, get_organization_contracts, get_organization_finance_summary,
-    get_organization_invoices, get_organization_members, get_organization_party_balances,
-    get_organization_payments, get_organization_projects, get_organization_subscription,
-    get_party_payment_readiness, get_payments, get_project_portal_summary, get_projects,
-    get_user_by_id, get_user_memberships, get_users, invite_organization_member,
-    list_agreement_payout_rules, list_engagement_billing, list_engagement_events,
-    list_engagement_milestones, list_engagement_transactions, list_for_project,
-    list_my_notifications, list_my_organizations, list_organization_agreements,
+    engagement_transaction_readiness, force_password_reset, generate_for_engagement,
+    get_admin_summary, get_client_portal_summary, get_clients, get_contracts, get_invoices, get_me,
+    get_my_organization, get_organization, get_organization_clients, get_organization_contracts,
+    get_organization_finance_summary, get_organization_invoices, get_organization_members,
+    get_organization_party_balances, get_organization_payments, get_organization_projects,
+    get_organization_subscription, get_party_payment_readiness, get_payments,
+    get_project_portal_summary, get_projects, get_user_by_id, get_user_memberships, get_users,
+    invite_organization_member, list_agreement_payout_rules, list_engagement_billing,
+    list_engagement_events, list_engagement_milestones, list_engagement_transactions,
+    list_for_project, list_my_notifications, list_my_organizations, list_organization_agreements,
     list_organization_events, list_organization_invitations, list_organization_members,
     list_organization_parties, list_organization_transactions, list_payout_rules,
     list_platform_organization_members, list_platform_organizations, list_platform_users,
@@ -260,6 +260,10 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route(
                 "/milestones/{id}/mark-paid",
                 web::post().to(mark_engagement_milestone_paid),
+            )
+            .route(
+                "/engagements/{id}/transaction-readiness",
+                web::get().to(engagement_transaction_readiness),
             )
             .route(
                 "/engagements/{id}/software-contract",

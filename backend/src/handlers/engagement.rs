@@ -711,6 +711,86 @@ pub async fn cancel_engagement(
     apply_engagement_lifecycle_event(db, auth, engagement_id, EngagementEvent::Cancel).await
 }
 
+#[derive(Debug, serde::Serialize)]
+pub struct EngagementTransactionReadinessResponse {
+    pub has_agreement: bool,
+    pub has_payout_rules: bool,
+    pub ready: bool,
+}
+
+pub async fn engagement_transaction_readiness(
+    db: web::Data<Db>,
+    auth: AuthUser,
+    path: web::Path<i64>,
+) -> impl Responder {
+    let engagement_id = path.into_inner();
+
+    let organization_id = match organization_id_for_engagement(&db, engagement_id).await {
+        Ok(id) => id,
+        Err(_) => {
+            return HttpResponse::NotFound().json(serde_json::json!({
+                "error": "Engagement not found"
+            }));
+        }
+    };
+
+    if let Err(err) = require_org_member(db.pool.as_ref(), auth.id, organization_id).await {
+        return err.error_response();
+    }
+
+    let agreement_id: Option<i64> = match sqlx::query_scalar(
+        r#"
+        SELECT id
+        FROM operational_agreements
+        WHERE engagement_id = $1
+        ORDER BY created_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(engagement_id)
+    .fetch_optional(db.pool.as_ref())
+    .await
+    {
+        Ok(id) => id,
+        Err(err) => {
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": err.to_string()
+            }));
+        }
+    };
+
+    let payout_rule_count: i64 = if let Some(agreement_id) = agreement_id {
+        match sqlx::query_scalar(
+            r#"
+            SELECT COUNT(*)::BIGINT
+            FROM agreement_payout_rules
+            WHERE agreement_id = $1
+            "#,
+        )
+        .bind(agreement_id)
+        .fetch_one(db.pool.as_ref())
+        .await
+        {
+            Ok(count) => count,
+            Err(err) => {
+                return HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": err.to_string()
+                }));
+            }
+        }
+    } else {
+        0
+    };
+
+    let response = EngagementTransactionReadinessResponse {
+        has_agreement: agreement_id.is_some(),
+        has_payout_rules: payout_rule_count > 0,
+        ready: agreement_id.is_some() && payout_rule_count > 0,
+    };
+
+    HttpResponse::Ok().json(response)
+}
+
 pub async fn dispute_engagement(
     db: web::Data<Db>,
     auth: AuthUser,

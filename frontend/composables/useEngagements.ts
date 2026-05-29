@@ -16,7 +16,9 @@ export function useEngagements() {
       method: 'POST',
     });
   }
-
+  const getTransactionReadiness = (projectId: number) => {
+    get(`/api/projects/${projectId}/transaction-readiness`);
+  };
   const getProjectEngagements = (projectId: number) =>
     get(`/api/projects/${projectId}/engagements`);
 
@@ -38,6 +40,7 @@ export function useEngagements() {
     post(`/api/engagements/${id}/complete`, {});
 
   return {
+    getTransactionReadiness,
     updateContractRecipient,
     resendContract,
     completeEngagement,
