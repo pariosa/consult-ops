@@ -7,6 +7,7 @@ mod models;
 mod routes;
 mod seed_demo;
 mod services;
+mod utils;
 
 use actix_cors::Cors;
 use actix_web::{App, HttpServer, web};

@@ -9,6 +9,7 @@ import OperationalTimeline from '~/components/Operations/OperationalTimeline.vue
 import { useOperationalEvents } from '~/composables/useOperationalEvents';
 import EngagementNextActionCard from '~/components/Operations/EngagementNextActionCard.vue';
 import { useEngagementBilling } from '~/composables/useEngagementBilling';
+import { useApi } from '~/composables/useApi';
 
 const { getEngagementEvents } = useOperationalEvents();
 const route = useRoute();
@@ -27,6 +28,7 @@ const resendLoading = ref(false);
 const checkoutLoading = ref(false);
 const billingItems = ref<any[]>([]);
 const operationalEvents = ref<any[]>([]);
+
 const error = ref('');
 const safeMilestones = computed(() =>
   Array.isArray(milestones.value) ? milestones.value : [],
@@ -47,13 +49,28 @@ const {
 
 const { getMilestones, submitMilestone, approveMilestone, markMilestonePaid } =
   useEngagementMilestones();
-
+const { post } = useApi();
 const transactionReadiness = ref({
   has_agreement: false,
   has_payout_rules: false,
   ready: false,
 });
+const signingContract = ref(false);
 
+async function markContractSigned() {
+  signingContract.value = true;
+  error.value = '';
+
+  try {
+    await post(`/api/engagements/${engagementId}/mark-signed`, {});
+    await load();
+  } catch (err: any) {
+    error.value =
+      err?.data?.error || err?.message || 'Failed to mark contract signed.';
+  } finally {
+    signingContract.value = false;
+  }
+}
 async function refresh() {
   loading.value = true;
   error.value = '';
@@ -334,7 +351,14 @@ onMounted(refresh);
           >
             Send Contract
           </button>
-
+          <button
+            v-if="engagement?.status === 'pending_signature'"
+            class="form-button"
+            :disabled="signingContract"
+            @click="markContractSigned"
+          >
+            {{ signingContract ? 'Signing...' : 'Mark Contract Signed' }}
+          </button>
           <button
             v-if="canResendContract"
             class="form-button"
@@ -453,20 +477,24 @@ onMounted(refresh);
           </div>
         </div>
       </section>
-      <section class="portal-section">
+      <section class="portal-section activation-payment-section">
         <div class="section-header">
           <div>
             <p class="eyebrow">Activation Billing</p>
             <h2>Engagement Access</h2>
             <p>
-              Pay the activation fee to unlock the engagement workflow and
-              record the payment in the operational timeline.
+              Pay the activation fee through Stripe. Stripe webhook confirmation
+              is the source of truth for payment status.
             </p>
           </div>
+        </div>
+
+        <div v-if="!billingItems.length" class="empty-state">
+          <p>No activation billing record yet.</p>
 
           <button
             class="form-button"
-            :disabled="checkoutLoading || engagement.status === 'active'"
+            :disabled="checkoutLoading"
             @click="payActivationFee"
           >
             {{
@@ -475,34 +503,79 @@ onMounted(refresh);
           </button>
         </div>
 
-        <div v-if="!billingItems.length" class="empty-state">
-          No activation billing record yet.
-        </div>
-
         <div
           v-for="billing in billingItems"
           :key="billing.id"
-          class="ops-card billing-row"
+          class="ops-card activation-payment-card"
+          :class="{ paid: billing.status === 'paid' }"
         >
           <div>
-            <h3>{{ billing.billing_type }}</h3>
-            <p>Status: {{ billing.status }}</p>
+            <p class="eyebrow">Activation Fee</p>
+
+            <h3>
+              {{
+                billing.status === 'paid'
+                  ? 'Activation fee paid and verified.'
+                  : 'Activation fee required.'
+              }}
+            </h3>
+
             <p>
-              Amount: ${{ (billing.amount_cents / 100).toFixed(2) }}
-              {{ billing.currency?.toUpperCase?.() || billing.currency }}
+              Status:
+              <span
+                class="status-text"
+                :class="
+                  billing.status === 'paid' ? 'paid-text' : 'pending-text'
+                "
+              >
+                {{ billing.status }}
+              </span>
             </p>
-            <p v-if="billing.stripe_checkout_session_id">
+
+            <p>
+              Amount:
+              <strong>
+                ${{ (billing.amount_cents / 100).toFixed(2) }}
+                {{ billing.currency?.toUpperCase?.() || billing.currency }}
+              </strong>
+            </p>
+
+            <p v-if="billing.status === 'paid'" class="paid-copy">
+              Payment has been confirmed by Stripe. This engagement is
+              financially cleared, but agreement setup may still be required
+              before the workflow can become active.
+            </p>
+
+            <p v-else class="pending-copy">
+              You will be redirected to Stripe Checkout. This page will only
+              show paid after the webhook confirms payment.
+            </p>
+
+            <p v-if="billing.stripe_checkout_session_id" class="stripe-session">
               Stripe session: {{ billing.stripe_checkout_session_id }}
             </p>
           </div>
 
-          <button
-            v-if="billing.status !== 'paid'"
-            class="form-button secondary"
-            @click="markBillingPaidLocal(billing.id)"
-          >
-            Dev: Mark Paid
-          </button>
+          <div class="activation-actions">
+            <button
+              v-if="billing.status !== 'paid'"
+              class="form-button"
+              :disabled="checkoutLoading"
+              @click="payActivationFee"
+            >
+              {{
+                checkoutLoading ? 'Starting Checkout...' : 'Pay Activation Fee'
+              }}
+            </button>
+
+            <NuxtLink
+              v-else
+              :to="`/engagements/${engagementId}/agreements`"
+              class="form-button link-button"
+            >
+              Continue Agreement Setup
+            </NuxtLink>
+          </div>
         </div>
       </section>
     </template>
@@ -687,5 +760,88 @@ onMounted(refresh);
 
 .final-signoff:hover {
   transform: translateY(-2px) scale(1.01);
+}
+.activation-payment-section {
+  border-color: rgba(52, 211, 153, 0.28);
+}
+
+.activation-payment-card {
+  display: grid;
+  gap: 18px;
+  margin-top: 14px;
+}
+
+.activation-payment-card.paid {
+  border-color: rgba(52, 211, 153, 0.42);
+  background: radial-gradient(
+      circle at top right,
+      rgba(52, 211, 153, 0.16),
+      transparent 34%
+    ),
+    rgba(8, 31, 42, 0.9);
+}
+
+.status-text {
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.paid-text {
+  color: #6ee7b7;
+}
+
+.pending-text {
+  color: #fbbf24;
+}
+
+.paid-copy,
+.pending-copy {
+  margin-top: 10px;
+  max-width: 680px;
+  line-height: 1.6;
+}
+
+.paid-copy {
+  color: #bbf7d0;
+}
+
+.pending-copy {
+  color: #cbd5e1;
+}
+
+.stripe-session {
+  color: #64748b;
+  font-size: 0.78rem;
+  margin-top: 10px;
+  overflow-wrap: anywhere;
+}
+
+.activation-actions {
+  display: flex;
+  align-items: center;
+}
+
+.link-button {
+  display: inline-flex;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.empty-state {
+  border: 1px dashed rgba(45, 212, 191, 0.28);
+  border-radius: 14px;
+  color: #cbd5e1;
+  padding: 18px;
+}
+
+.empty-state .form-button {
+  margin-top: 14px;
+}
+
+@media (min-width: 760px) {
+  .activation-payment-card {
+    grid-template-columns: 1fr 280px;
+    align-items: center;
+  }
 }
 </style>

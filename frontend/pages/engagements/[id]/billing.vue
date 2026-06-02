@@ -1,198 +1,334 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { useEngagements } from '~/composables/useEngagements';
-import { useEngagementMilestones } from '~/composables/useEngagementMilestones';
+import { computed, onMounted, ref } from 'vue';
+import { useEngagementBilling } from '~/composables/useEngagementBilling';
 
 const route = useRoute();
-const engagementId = Number(route.params.id);
+const engagementId = computed(() => Number(route.params.id));
 
-const { getEngagement } = useEngagements();
-const { getMilestones } = useEngagementMilestones();
+const { getEngagementBilling, createActivationCheckout } =
+  useEngagementBilling();
 
-const engagement = ref<any>(null);
-const milestones = ref<any[]>([]);
-const loading = ref(true);
-const checkoutLoading = ref(false);
-const message = ref('');
+const billingRecords = ref<any[]>([]);
+const loading = ref(false);
+const loadingCheckout = ref(false);
+const error = ref('');
 
-async function refresh() {
+const activationBilling = computed(() =>
+  billingRecords.value.find(
+    (record) => record.billing_type === 'activation_fee',
+  ),
+);
+
+const activationPaid = computed(
+  () => activationBilling.value?.status === 'paid',
+);
+
+const checkoutStatus = computed(() => {
+  if (route.query.checkout === 'success') {
+    return 'Payment submitted. Waiting for Stripe confirmation.';
+  }
+
+  if (route.query.checkout === 'cancelled') {
+    return 'Checkout was cancelled. No payment was recorded.';
+  }
+
+  return '';
+});
+
+async function loadBilling() {
   loading.value = true;
+  error.value = '';
 
   try {
-    engagement.value = await getEngagement(engagementId);
-    milestones.value = await getMilestones(engagementId);
+    billingRecords.value = await getEngagementBilling(engagementId.value);
+  } catch (err: any) {
+    error.value = err?.message || 'Failed to load engagement billing.';
   } finally {
     loading.value = false;
   }
 }
 
-const totalMilestoneCents = computed(() =>
-  milestones.value.reduce(
-    (sum, item) => sum + Number(item.amount_cents || 0),
-    0,
-  ),
-);
-
-const paidMilestoneCents = computed(() =>
-  milestones.value
-    .filter((item) => item.status === 'paid')
-    .reduce((sum, item) => sum + Number(item.amount_cents || 0), 0),
-);
-
-const remainingMilestoneCents = computed(
-  () => totalMilestoneCents.value - paidMilestoneCents.value,
-);
-
-function formatCurrency(cents: number) {
-  return `$${(cents / 100).toFixed(2)}`;
-}
-
 async function startActivationCheckout() {
-  checkoutLoading.value = true;
-  message.value = '';
+  loadingCheckout.value = true;
+  error.value = '';
 
   try {
-    message.value =
-      'Stripe activation checkout endpoint is not wired yet. Add the backend checkout route next.';
+    const result = await createActivationCheckout(engagementId.value);
+    const checkoutUrl = result?.url || result?.checkout_url;
+
+    if (!checkoutUrl) {
+      throw new Error('Stripe checkout URL was not returned.');
+    }
+
+    window.location.href = checkoutUrl;
+  } catch (err: any) {
+    error.value = err?.message || 'Unable to start Stripe checkout.';
   } finally {
-    checkoutLoading.value = false;
+    loadingCheckout.value = false;
   }
 }
 
-await refresh();
+onMounted(loadBilling);
 </script>
 
 <template>
   <DashboardShell
     title="Engagement Billing"
-    subtitle="Activate the engagement and track contractor payment status."
+    subtitle="Activation payments and Stripe checkout."
   >
-    <section v-if="loading" class="portal-section">
-      Loading billing workflow...
-    </section>
-
-    <template v-else>
-      <section class="portal-section">
-        <NuxtLink
-          :to="`/engagements/${engagementId}`"
-          class="text-cyan-300 hover:text-cyan-200"
-        >
-          ← Back to engagement
-        </NuxtLink>
-
-        <div class="section-header mt-4">
-          <div>
-            <p class="eyebrow">Billing Overview</p>
-            <h2 class="text-2xl font-bold text-white">
-              {{ engagement?.title || 'Engagement' }}
-            </h2>
-            <p class="text-slate-300">
-              {{ engagement?.contractor_name }} —
-              {{ engagement?.contractor_email }}
-            </p>
-          </div>
-
-          <span class="status-pill">
-            {{ engagement?.platform_fee_status || 'pending' }}
-          </span>
-        </div>
-      </section>
-
-      <section class="portal-section">
-        <div class="section-header">
-          <div>
-            <p class="eyebrow">Platform Fee</p>
-            <h2 class="text-2xl font-bold text-white">
-              $10 engagement activation
-            </h2>
-            <p class="text-slate-300">
-              Activation will unlock contract sending, milestone approval, and
-              payment tracking.
-            </p>
-          </div>
+    <main class="billing-page">
+      <section class="billing-card">
+        <div class="billing-header">
+          <p class="billing-eyebrow">Billing</p>
+          <h1>Activation Payment</h1>
+          <p>
+            Pay the platform activation fee through Stripe. Consult Ops only
+            marks the fee paid after Stripe confirms the payment.
+          </p>
         </div>
 
-        <button
-          class="form-button"
-          type="button"
-          :disabled="checkoutLoading"
-          @click="startActivationCheckout"
-        >
-          {{
-            checkoutLoading
-              ? 'Preparing checkout...'
-              : 'Activate Engagement — $10'
-          }}
-        </button>
-
-        <p v-if="message" class="text-slate-300 mt-3">
-          {{ message }}
-        </p>
-      </section>
-
-      <section class="portal-section">
-        <div class="section-header">
-          <div>
-            <p class="eyebrow">Milestone Payments</p>
-            <h2 class="text-2xl font-bold text-white">Payment Summary</h2>
-          </div>
+        <div v-if="checkoutStatus" class="notice">
+          {{ checkoutStatus }}
         </div>
 
-        <div class="billing-grid">
-          <div class="ops-card">
-            <p class="eyebrow">Total Milestones</p>
-            <h3 class="text-xl font-bold text-white">
-              {{ formatCurrency(totalMilestoneCents) }}
-            </h3>
-          </div>
-
-          <div class="ops-card">
-            <p class="eyebrow">Paid</p>
-            <h3 class="text-xl font-bold text-white">
-              {{ formatCurrency(paidMilestoneCents) }}
-            </h3>
-          </div>
-
-          <div class="ops-card">
-            <p class="eyebrow">Remaining</p>
-            <h3 class="text-xl font-bold text-white">
-              {{ formatCurrency(remainingMilestoneCents) }}
-            </h3>
-          </div>
+        <div v-if="error" class="error-box">
+          {{ error }}
         </div>
 
-        <div v-if="!milestones.length" class="empty-state">
-          No milestones available for billing yet.
-        </div>
+        <div v-if="loading" class="status-panel">Loading billing status...</div>
 
-        <div
-          v-for="milestone in milestones"
-          :key="milestone.id"
-          class="ops-card milestone-card"
-        >
-          <div class="flex items-center justify-between mb-4">
-            <div>
-              <h3 class="text-xl font-semibold text-white">
-                {{ milestone.title }}
-              </h3>
+        <div v-else class="payment-panel" :class="{ paid: activationPaid }">
+          <div class="payment-copy">
+            <p class="billing-eyebrow">Activation Fee</p>
 
-              <p class="text-slate-300 mt-1">
-                {{ milestone.description || 'No description provided.' }}
-              </p>
-            </div>
+            <h2 v-if="activationPaid">Activation fee paid</h2>
+            <h2 v-else>Activation fee required</h2>
 
-            <div class="text-right">
-              <p class="text-cyan-200 font-bold text-lg">
-                {{ formatCurrency(milestone.amount_cents) }}
-              </p>
-
-              <span class="status-pill mt-2 inline-flex">
-                {{ milestone.status }}
+            <p class="status-line">
+              Status:
+              <span :class="activationPaid ? 'status-paid' : 'status-pending'">
+                {{ activationBilling?.status || 'not started' }}
               </span>
-            </div>
+            </p>
+
+            <p v-if="activationPaid">
+              Stripe has confirmed this payment. This engagement is financially
+              cleared. Continue agreement setup to finish preparing the
+              workflow.
+            </p>
+
+            <p v-else>
+              You will be redirected to Stripe Checkout. The frontend return
+              page does not mark this fee paid; the webhook confirmation does.
+            </p>
+
+            <p v-if="activationBilling" class="amount-line">
+              Amount:
+              <strong>
+                ${{ (activationBilling.amount_cents / 100).toFixed(2) }}
+                {{
+                  activationBilling.currency?.toUpperCase?.() ||
+                  activationBilling.currency
+                }}
+              </strong>
+            </p>
+          </div>
+
+          <div class="payment-action">
+            <NuxtLink
+              v-if="activationPaid"
+              :to="`/engagements/${engagementId}/agreements`"
+              class="action-button"
+            >
+              Continue Agreement Setup
+            </NuxtLink>
+
+            <button
+              v-else
+              class="action-button"
+              type="button"
+              :disabled="loadingCheckout || !engagementId"
+              @click="startActivationCheckout"
+            >
+              {{
+                loadingCheckout
+                  ? 'Redirecting to Stripe...'
+                  : 'Pay Activation Fee'
+              }}
+            </button>
           </div>
         </div>
+
+        <details
+          v-if="activationBilling?.stripe_checkout_session_id"
+          class="technical-details"
+        >
+          <summary>Technical payment details</summary>
+          <p>
+            Stripe session:
+            {{ activationBilling.stripe_checkout_session_id }}
+          </p>
+        </details>
       </section>
-    </template>
+    </main>
   </DashboardShell>
 </template>
+
+<style scoped>
+.billing-page {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.billing-card {
+  border: 1px solid rgba(45, 212, 191, 0.24);
+  border-radius: 20px;
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.96),
+    rgba(2, 12, 23, 0.98)
+  );
+  color: #e5eefc;
+  padding: 28px;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.32);
+}
+
+.billing-header {
+  margin-bottom: 24px;
+}
+
+.billing-eyebrow {
+  color: #67e8f9;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.13em;
+  margin: 0 0 10px;
+  text-transform: uppercase;
+}
+
+.billing-header h1,
+.payment-copy h2 {
+  color: #f8fafc;
+  margin: 0 0 10px;
+  letter-spacing: -0.03em;
+}
+
+.billing-header h1 {
+  font-size: clamp(2rem, 4vw, 3rem);
+}
+
+.billing-header p,
+.payment-copy p {
+  color: #cbd5e1;
+  line-height: 1.65;
+  margin: 0;
+}
+
+.notice {
+  border: 1px solid rgba(34, 211, 238, 0.28);
+  border-radius: 14px;
+  background: rgba(8, 47, 73, 0.38);
+  color: #a5f3fc;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+}
+
+.error-box {
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  border-radius: 14px;
+  background: rgba(127, 29, 29, 0.24);
+  color: #fecaca;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+}
+
+.status-panel,
+.payment-panel {
+  border: 1px solid rgba(45, 212, 191, 0.22);
+  border-radius: 18px;
+  background: rgba(8, 31, 42, 0.88);
+  padding: 20px;
+}
+
+.payment-panel {
+  display: grid;
+  gap: 20px;
+}
+
+.payment-panel.paid {
+  border-color: rgba(52, 211, 153, 0.42);
+  background: radial-gradient(
+      circle at top right,
+      rgba(52, 211, 153, 0.16),
+      transparent 36%
+    ),
+    rgba(8, 31, 42, 0.9);
+}
+
+.status-line {
+  margin: 12px 0 !important;
+}
+
+.status-paid,
+.status-pending {
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.status-paid {
+  color: #6ee7b7;
+}
+
+.status-pending {
+  color: #fbbf24;
+}
+
+.amount-line {
+  margin-top: 14px !important;
+}
+
+.payment-action {
+  display: flex;
+  align-items: center;
+}
+
+.action-button {
+  width: 100%;
+  border: 0;
+  border-radius: 14px;
+  background: linear-gradient(90deg, #60a5fa, #34d399);
+  color: #04111f;
+  cursor: pointer;
+  display: inline-flex;
+  font-weight: 900;
+  justify-content: center;
+  padding: 14px 18px;
+  text-decoration: none;
+}
+
+.action-button:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.4);
+  opacity: 0.65;
+}
+
+.technical-details {
+  border-top: 1px solid rgba(45, 212, 191, 0.16);
+  color: #94a3b8;
+  font-size: 0.8rem;
+  margin-top: 18px;
+  padding-top: 14px;
+}
+
+.technical-details p {
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 760px) {
+  .payment-panel {
+    grid-template-columns: 1fr 260px;
+    align-items: center;
+  }
+}
+</style>

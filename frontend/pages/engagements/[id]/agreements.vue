@@ -12,8 +12,9 @@ import { useAgreements } from '~/composables/useAgreements';
 
 const route = useRoute();
 const router = useRouter();
-
 const api = useApi();
+
+const engagementId = Number(route.params.id);
 
 const {
   listOrganizationAgreements,
@@ -23,11 +24,12 @@ const {
   createPayoutRule: createPayoutRuleRequest,
 } = useAgreements();
 
-const engagementId = Number(route.params.id);
+const { canManageAgreements } = usePermissions();
 
 const loading = ref(true);
 const saving = ref(false);
 const error = ref('');
+const success = ref('');
 
 const engagement = ref<any>(null);
 const organizationId = ref<number | null>(null);
@@ -37,9 +39,6 @@ const agreements = ref<any[]>([]);
 const payoutRules = ref<any[]>([]);
 
 const selectedAgreementId = ref<number | null>(null);
-
-const { canManageAgreements } = usePermissions();
-
 const setupPayerPartyId = ref<number | null>(null);
 const setupPayeePartyId = ref<number | null>(null);
 
@@ -47,18 +46,6 @@ const paymentReadiness = ref({
   payerReady: false,
   payeeReady: false,
   allReady: false,
-});
-
-const clientParty = ref({
-  name: '',
-  email: '',
-  party_type: 'client',
-});
-
-const contractorParty = ref({
-  name: '',
-  email: '',
-  party_type: 'contractor',
 });
 
 const agreementForm = ref({
@@ -85,6 +72,8 @@ const agreementLocked = computed(
   () => selectedAgreement.value?.status === 'locked',
 );
 
+const hasPayoutRule = computed(() => payoutRules.value.length > 0);
+
 const verifiedParties = computed(() =>
   parties.value.filter((party) => Number(party.is_verified) === 1),
 );
@@ -109,37 +98,17 @@ const contractorPayeeParties = computed(() =>
   ),
 );
 
-function updatePaymentReadiness(payload: any) {
-  paymentReadiness.value = payload;
-
-  if (payload.payerReady && setupPayerPartyId.value) {
-    payoutRuleForm.value.from_party_id = setupPayerPartyId.value;
-  }
-
-  if (payload.payeeReady && setupPayeePartyId.value) {
-    payoutRuleForm.value.to_party_id = setupPayeePartyId.value;
-  }
-}
-
-function preparePayer(partyId: number) {
-  setupPayerPartyId.value = Number(partyId);
-
-  paymentReadiness.value = {
-    ...paymentReadiness.value,
-    payerReady: false,
-    allReady: false,
-  };
-}
-
-function preparePayee(partyId: number) {
-  setupPayeePartyId.value = Number(partyId);
-
-  paymentReadiness.value = {
-    ...paymentReadiness.value,
-    payeeReady: false,
-    allReady: false,
-  };
-}
+const canAddPayoutRule = computed(() => {
+  return (
+    canManageAgreements.value &&
+    selectedAgreementId.value &&
+    !agreementLocked.value &&
+    !hasPayoutRule.value &&
+    paymentReadiness.value.allReady &&
+    payoutRuleForm.value.from_party_id &&
+    payoutRuleForm.value.to_party_id
+  );
+});
 
 function partyLabel(partyId: number) {
   const party = parties.value.find((item) => item.id === partyId);
@@ -161,13 +130,72 @@ function formatPercent(rule: any) {
   return 'Not configured';
 }
 
+function hydrateSelectedPartiesFromExistingRules() {
+  const firstRule = payoutRules.value?.[0];
+
+  if (!firstRule) return;
+
+  if (!setupPayerPartyId.value && firstRule.from_party_id) {
+    setupPayerPartyId.value = Number(firstRule.from_party_id);
+  }
+
+  if (!setupPayeePartyId.value && firstRule.to_party_id) {
+    setupPayeePartyId.value = Number(firstRule.to_party_id);
+  }
+
+  payoutRuleForm.value.from_party_id =
+    payoutRuleForm.value.from_party_id || Number(firstRule.from_party_id);
+
+  payoutRuleForm.value.to_party_id =
+    payoutRuleForm.value.to_party_id || Number(firstRule.to_party_id);
+
+  paymentReadiness.value = {
+    payerReady: true,
+    payeeReady: true,
+    allReady: true,
+  };
+}
+
+function updatePaymentReadiness(payload: any) {
+  paymentReadiness.value = payload;
+
+  if (payload.payerReady && setupPayerPartyId.value) {
+    payoutRuleForm.value.from_party_id = setupPayerPartyId.value;
+  }
+
+  if (payload.payeeReady && setupPayeePartyId.value) {
+    payoutRuleForm.value.to_party_id = setupPayeePartyId.value;
+  }
+}
+
+function preparePayer(partyId: number) {
+  setupPayerPartyId.value = Number(partyId);
+  payoutRuleForm.value.from_party_id = Number(partyId);
+
+  paymentReadiness.value = {
+    ...paymentReadiness.value,
+    payerReady: false,
+    allReady: false,
+  };
+}
+
+function preparePayee(partyId: number) {
+  setupPayeePartyId.value = Number(partyId);
+  payoutRuleForm.value.to_party_id = Number(partyId);
+
+  paymentReadiness.value = {
+    ...paymentReadiness.value,
+    payeeReady: false,
+    allReady: false,
+  };
+}
+
 async function refresh() {
   loading.value = true;
   error.value = '';
 
   try {
     engagement.value = await api.get(`/api/engagements/${engagementId}`);
-
     organizationId.value = engagement.value.organization_id;
 
     parties.value = await api.get(
@@ -182,8 +210,8 @@ async function refresh() {
 
     if (engagementAgreements.length) {
       selectedAgreementId.value = engagementAgreements[0].id;
-
       payoutRules.value = await listPayoutRules(selectedAgreementId.value);
+      hydrateSelectedPartiesFromExistingRules();
     } else {
       selectedAgreementId.value = null;
       payoutRules.value = [];
@@ -194,46 +222,6 @@ async function refresh() {
   } finally {
     loading.value = false;
   }
-}
-
-async function createParty(payload: any) {
-  if (!organizationId.value) return;
-
-  saving.value = true;
-  error.value = '';
-
-  try {
-    await api.post(
-      `/api/organizations/${organizationId.value}/parties`,
-      payload,
-    );
-
-    await refresh();
-  } catch (err: any) {
-    error.value = err?.data?.error || err?.message || 'Failed to create party.';
-  } finally {
-    saving.value = false;
-  }
-}
-
-async function createClientParty() {
-  await createParty(clientParty.value);
-
-  clientParty.value = {
-    name: '',
-    email: '',
-    party_type: 'client',
-  };
-}
-
-async function createContractorParty() {
-  await createParty(contractorParty.value);
-
-  contractorParty.value = {
-    name: '',
-    email: '',
-    party_type: 'contractor',
-  };
 }
 
 async function createVerifiedClientParty() {
@@ -263,14 +251,17 @@ async function createVerifiedClientParty() {
 }
 
 async function createVerifiedUserParty() {
-  if (!organizationId.value) return;
+  if (!organizationId.value || !engagement.value?.contractor_user_id) {
+    error.value = 'No contractor user linked to this engagement.';
+    return;
+  }
 
   saving.value = true;
   error.value = '';
 
   try {
     await api.post(
-      `/api/organizations/${organizationId.value}/parties/from-user/${engagement.value?.contractor_user_id}`,
+      `/api/organizations/${organizationId.value}/parties/from-user/${engagement.value.contractor_user_id}`,
       {},
     );
 
@@ -290,6 +281,7 @@ async function createAgreement() {
 
   saving.value = true;
   error.value = '';
+  success.value = '';
 
   try {
     const agreement = await createAgreementRequest(organizationId.value, {
@@ -299,7 +291,7 @@ async function createAgreement() {
     });
 
     selectedAgreementId.value = agreement.id;
-
+    success.value = 'Agreement created.';
     await refresh();
   } catch (err: any) {
     error.value =
@@ -315,6 +307,11 @@ async function createPayoutRule() {
     return;
   }
 
+  if (hasPayoutRule.value) {
+    success.value = 'Payout rule already configured.';
+    return;
+  }
+
   if (
     !payoutRuleForm.value.from_party_id ||
     !payoutRuleForm.value.to_party_id
@@ -325,6 +322,7 @@ async function createPayoutRule() {
 
   saving.value = true;
   error.value = '';
+  success.value = '';
 
   try {
     await createPayoutRuleRequest(selectedAgreementId.value, {
@@ -337,6 +335,8 @@ async function createPayoutRule() {
     });
 
     payoutRules.value = await listPayoutRules(selectedAgreementId.value);
+    hydrateSelectedPartiesFromExistingRules();
+    success.value = 'Payout rule configured.';
   } catch (err: any) {
     error.value =
       err?.data?.error || err?.message || 'Failed to create payout rule.';
@@ -350,10 +350,11 @@ async function lockAgreement() {
 
   saving.value = true;
   error.value = '';
+  success.value = '';
 
   try {
     await lockAgreementRequest(selectedAgreementId.value);
-
+    success.value = 'Agreement locked.';
     await refresh();
   } catch (err: any) {
     error.value =
@@ -365,6 +366,10 @@ async function lockAgreement() {
 
 function goToTransactions() {
   router.push(`/engagements/${engagementId}/transactions`);
+}
+
+function goToMilestones() {
+  router.push(`/engagements/${engagementId}/milestones`);
 }
 
 onMounted(refresh);
@@ -384,11 +389,13 @@ onMounted(refresh);
     </section>
 
     <template v-else>
+      <section v-if="success" class="success-state">
+        {{ success }}
+      </section>
+
       <section class="portal-section hero-section">
         <p class="eyebrow">Operational Agreement</p>
-
         <h2>{{ engagement?.title }}</h2>
-
         <p>
           Define who pays whom, under which agreement, and what workflow event
           generates the transaction.
@@ -415,147 +422,13 @@ onMounted(refresh);
         @readiness-change="updatePaymentReadiness"
       />
 
-      <section v-if="canManageAgreements" class="portal-section">
-        <p class="eyebrow">Current Setup Selection</p>
-
-        <p>
-          Payer being prepared:
-          <strong>
-            {{
-              setupPayerPartyId
-                ? partyLabel(setupPayerPartyId)
-                : 'None selected'
-            }}
-          </strong>
-        </p>
-
-        <p>
-          Payee being prepared:
-          <strong>
-            {{
-              setupPayeePartyId
-                ? partyLabel(setupPayeePartyId)
-                : 'None selected'
-            }}
-          </strong>
-        </p>
-      </section>
-
-      <section v-if="canManageAgreements" class="setup-grid">
-        <div class="portal-section">
-          <p class="eyebrow">Client Party</p>
-
-          <h2>Create Client</h2>
-
-          <label>Name</label>
-
-          <input v-model="clientParty.name" class="form-input" />
-
-          <label>Email</label>
-
-          <input v-model="clientParty.email" class="form-input" />
-
-          <button
-            class="form-button"
-            :disabled="saving || !clientParty.name"
-            @click="createClientParty"
-          >
-            Add Client Party
-          </button>
-        </div>
-
-        <div class="portal-section">
-          <p class="eyebrow">Contractor Party</p>
-
-          <h2>Create Contractor</h2>
-
-          <label>Name</label>
-
-          <input v-model="contractorParty.name" class="form-input" />
-
-          <label>Email</label>
-
-          <input v-model="contractorParty.email" class="form-input" />
-
-          <button
-            class="form-button"
-            :disabled="saving || !contractorParty.name"
-            @click="createContractorParty"
-          >
-            Add Contractor Party
-          </button>
-        </div>
-      </section>
-
-      <section v-if="!canManageAgreements" class="form-error">
-        You can view this engagement, but only admins, operations managers,
-        finance admins, or payment moderators can manage agreement rules.
-      </section>
-
-      <section class="portal-section">
-        <p class="eyebrow">Party Registry</p>
-
-        <h2>Available Payers and Payees</h2>
-
-        <div class="setup-grid">
-          <div>
-            <h3>Client / Payer Parties</h3>
-
-            <div
-              v-for="party in clientPayerParties"
-              :key="party.id"
-              class="ops-card"
-            >
-              <strong>{{ party.name }}</strong>
-
-              <p>{{ party.email }}</p>
-
-              <p>{{ partyLabel(party.id) }}</p>
-
-              <button
-                class="form-button secondary"
-                @click="preparePayer(party.id)"
-              >
-                Prepare as Payer
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <h3>Contractor / Payee Parties</h3>
-
-            <div
-              v-for="party in contractorPayeeParties"
-              :key="party.id"
-              class="ops-card"
-            >
-              <strong>{{ party.name }}</strong>
-
-              <p>{{ party.email }}</p>
-
-              <p>{{ partyLabel(party.id) }}</p>
-
-              <button
-                class="form-button secondary"
-                @click="preparePayee(party.id)"
-              >
-                Prepare as Payee
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <section class="portal-section">
         <p class="eyebrow">Agreement</p>
-
         <h2>Engagement Agreement</h2>
 
         <div v-if="selectedAgreement" class="ops-card">
           <h3>{{ selectedAgreement.title }}</h3>
-
           <p>Type: {{ selectedAgreement.agreement_type }}</p>
-
           <p>Status: {{ selectedAgreement.status }}</p>
         </div>
 
@@ -567,26 +440,21 @@ onMounted(refresh);
         <button
           v-if="canManageAgreements && selectedAgreement && !agreementLocked"
           class="form-button"
-          :disabled="saving || !payoutRules.length"
+          :disabled="saving || !hasPayoutRule"
           @click="lockAgreement"
         >
-          Lock Agreement
+          {{ saving ? 'Locking...' : 'Lock Agreement' }}
         </button>
 
         <div v-if="!selectedAgreement" class="form-grid">
           <label>Agreement Title</label>
-
           <input v-model="agreementForm.title" class="form-input" />
 
           <label>Agreement Type</label>
-
           <select v-model="agreementForm.agreement_type" class="form-input">
             <option value="milestone_payout">Milestone Payout</option>
-
             <option value="subcontractor_split">Subcontractor Split</option>
-
             <option value="revenue_share">Revenue Share</option>
-
             <option value="dividend_share">Dividend Share</option>
           </select>
 
@@ -602,21 +470,66 @@ onMounted(refresh);
       </section>
 
       <section class="portal-section">
-        <p class="eyebrow">Payout Rule</p>
+        <p class="eyebrow">Payment Certainty</p>
+        <h2>Selected Payer and Payee</h2>
 
+        <div class="setup-grid">
+          <div class="ops-card">
+            <p class="eyebrow">Payer</p>
+            <h3>
+              {{
+                setupPayerPartyId
+                  ? partyLabel(setupPayerPartyId)
+                  : 'No payer selected'
+              }}
+            </h3>
+            <p :class="paymentReadiness.payerReady ? 'ready' : 'not-ready'">
+              {{
+                paymentReadiness.payerReady
+                  ? 'Funding authorized'
+                  : 'Funding not authorized'
+              }}
+            </p>
+          </div>
+
+          <div class="ops-card">
+            <p class="eyebrow">Payee</p>
+            <h3>
+              {{
+                setupPayeePartyId
+                  ? partyLabel(setupPayeePartyId)
+                  : 'No payee selected'
+              }}
+            </h3>
+            <p :class="paymentReadiness.payeeReady ? 'ready' : 'not-ready'">
+              {{
+                paymentReadiness.payeeReady
+                  ? 'Payout ready'
+                  : 'Payout not ready'
+              }}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="portal-section">
+        <p class="eyebrow">Payout Rule</p>
         <h2>Generate Transactions On Approval</h2>
 
-        <div class="form-grid">
-          <label for="payer-party">Payer</label>
+        <div v-if="hasPayoutRule" class="success-state">
+          Payout rule already configured. You can lock the agreement when ready.
+        </div>
 
+        <div v-else class="form-grid">
+          <label for="payer-party">Payer</label>
           <select
             id="payer-party"
             v-model.number="payoutRuleForm.from_party_id"
             class="form-input"
             :disabled="agreementLocked"
+            @change="preparePayer(Number(payoutRuleForm.from_party_id))"
           >
             <option :value="null">Select payer</option>
-
             <option
               v-for="party in verifiedClientParties"
               :key="party.id"
@@ -627,15 +540,14 @@ onMounted(refresh);
           </select>
 
           <label for="payee-party">Payee</label>
-
           <select
             id="payee-party"
             v-model.number="payoutRuleForm.to_party_id"
             class="form-input"
             :disabled="agreementLocked"
+            @change="preparePayee(Number(payoutRuleForm.to_party_id))"
           >
             <option :value="null">Select payee</option>
-
             <option
               v-for="party in verifiedContractorParties"
               :key="party.id"
@@ -646,23 +558,18 @@ onMounted(refresh);
           </select>
 
           <label>Rule Type</label>
-
           <select
             v-model="payoutRuleForm.rule_type"
             class="form-input"
             :disabled="agreementLocked"
           >
             <option value="contractor_payout">Contractor Payout</option>
-
             <option value="subcontractor_payout">Subcontractor Payout</option>
-
             <option value="revenue_share">Revenue Share</option>
-
             <option value="dividend">Dividend</option>
           </select>
 
           <label>Percent</label>
-
           <input
             v-model.number="payoutRuleForm.percent"
             type="number"
@@ -673,26 +580,19 @@ onMounted(refresh);
           />
 
           <label>Trigger</label>
-
           <select
             v-model="payoutRuleForm.trigger_event"
             class="form-input"
             :disabled="agreementLocked"
           >
             <option value="MilestoneApproved">Milestone Approved</option>
-
             <option value="EngagementCompleted">Engagement Completed</option>
           </select>
 
           <button
             v-if="canManageAgreements"
             class="form-button"
-            :disabled="
-              saving ||
-              agreementLocked ||
-              !selectedAgreementId ||
-              !paymentReadiness.allReady
-            "
+            :disabled="saving || !canAddPayoutRule"
             @click="createPayoutRule"
           >
             Add Payout Rule
@@ -710,7 +610,6 @@ onMounted(refresh);
 
       <section v-if="canManageAgreements" class="portal-section">
         <p class="eyebrow">Verified Parties</p>
-
         <h2>Assign Verified Parties</h2>
 
         <div class="verified-grid">
@@ -732,8 +631,56 @@ onMounted(refresh);
       </section>
 
       <section class="portal-section">
-        <p class="eyebrow">Existing Rules</p>
+        <p class="eyebrow">Party Registry</p>
+        <h2>Available Payers and Payees</h2>
 
+        <div class="setup-grid">
+          <div>
+            <h3>Client / Payer Parties</h3>
+
+            <div
+              v-for="party in clientPayerParties"
+              :key="party.id"
+              class="ops-card party-card"
+            >
+              <strong>{{ party.name }}</strong>
+              <p>{{ party.email }}</p>
+              <p>{{ partyLabel(party.id) }}</p>
+
+              <button
+                class="form-button secondary"
+                @click="preparePayer(party.id)"
+              >
+                Prepare as Payer
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <h3>Contractor / Payee Parties</h3>
+
+            <div
+              v-for="party in contractorPayeeParties"
+              :key="party.id"
+              class="ops-card party-card"
+            >
+              <strong>{{ party.name }}</strong>
+              <p>{{ party.email }}</p>
+              <p>{{ partyLabel(party.id) }}</p>
+
+              <button
+                class="form-button secondary"
+                @click="preparePayee(party.id)"
+              >
+                Prepare as Payee
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="portal-section">
+        <p class="eyebrow">Existing Rules</p>
         <h2>Payout Rules</h2>
 
         <div v-if="!payoutRules.length" class="empty-state">
@@ -747,18 +694,28 @@ onMounted(refresh);
         >
           <div>
             <h3>{{ rule.rule_type }}</h3>
-
             <p>Trigger: {{ rule.trigger_event }}</p>
-
             <p>Amount: {{ formatPercent(rule) }}</p>
           </div>
 
           <div>
             <p>From: {{ partyLabel(rule.from_party_id) }}</p>
-
             <p>To: {{ partyLabel(rule.to_party_id) }}</p>
           </div>
         </div>
+      </section>
+
+      <section v-if="agreementLocked" class="portal-section">
+        <p class="eyebrow">Next Step</p>
+        <h2>Agreement is locked</h2>
+        <p>
+          Milestone approvals can now generate operational transactions from
+          this payout rule.
+        </p>
+
+        <button class="form-button" @click="goToMilestones">
+          Continue to Milestones
+        </button>
       </section>
     </template>
   </DashboardShell>
@@ -779,16 +736,10 @@ onMounted(refresh);
   margin-bottom: 24px;
 }
 
-.setup-grid {
+.setup-grid,
+.verified-grid {
   display: grid;
   gap: 18px;
-}
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 20px;
 }
 
 .eyebrow {
@@ -831,6 +782,7 @@ label {
   cursor: pointer;
   font-weight: 800;
   padding: 12px 16px;
+  width: 100%;
 }
 
 .form-button.secondary {
@@ -850,6 +802,7 @@ label {
   background: rgba(127, 29, 29, 0.24);
   color: #fecaca;
   padding: 16px;
+  margin-bottom: 16px;
 }
 
 .success-state {
@@ -858,7 +811,7 @@ label {
   background: rgba(20, 83, 45, 0.24);
   color: #bbf7d0;
   padding: 16px;
-  margin-top: 16px;
+  margin: 16px 0;
 }
 
 .ops-card {
@@ -866,13 +819,12 @@ label {
   border-radius: 14px;
   background: rgba(8, 31, 42, 0.86);
   padding: 16px;
+  margin-top: 12px;
 }
 
 .rule-card {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
   gap: 16px;
-  margin-top: 12px;
 }
 
 .empty-state {
@@ -882,8 +834,20 @@ label {
   padding: 18px;
 }
 
+.ready {
+  color: #6ee7b7;
+  font-weight: 900;
+}
+
+.not-ready {
+  color: #fca5a5;
+  font-weight: 900;
+}
+
 @media (min-width: 860px) {
-  .setup-grid {
+  .setup-grid,
+  .verified-grid,
+  .rule-card {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

@@ -1,5 +1,6 @@
 pub mod authz;
 pub mod email_notification_service;
+pub mod engagement_activation_service;
 pub mod event_service;
 pub mod notification_email_recipient_service;
 pub mod notification_service;

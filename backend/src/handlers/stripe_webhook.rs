@@ -7,6 +7,7 @@ use crate::handlers::engagement_billing::{
     activate_engagement_from_payment, record_billing_and_engagement_event,
 };
 use crate::models::EngagementBilling;
+use crate::services::engagement_activation_service::maybe_activate_engagement;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -53,6 +54,7 @@ pub async fn stripe_webhook(
     body: web::Bytes,
     req: HttpRequest,
 ) -> impl Responder {
+    eprintln!("STRIPE WEBHOOK HIT");
     let webhook_secret = match std::env::var("STRIPE_WEBHOOK_SECRET") {
         Ok(secret) => secret,
         Err(_) => {
@@ -94,7 +96,7 @@ pub async fn stripe_webhook(
         .get("type")
         .and_then(|value| value.as_str())
         .unwrap_or("");
-
+    eprintln!("STRIPE EVENT TYPE: {}", event_type);
     if event_type != "checkout.session.completed" {
         return HttpResponse::Ok().json(serde_json::json!({
             "received": true,
@@ -114,12 +116,42 @@ pub async fn stripe_webhook(
 
     match EngagementBilling::mark_paid_by_session(db.pool.as_ref(), session_id).await {
         Ok(billing) => {
+            eprintln!("MARKING BILLING PAID BY SESSION: {}", session_id);
             record_billing_and_engagement_event(
                 &db,
                 &billing,
                 "ActivationFeePaid",
                 Some("pending"),
                 Some("paid"),
+            )
+            .await;
+
+            let update_engagement_fee_result = sqlx::query(
+                r#"
+                    UPDATE engagements
+                    SET platform_fee_status = 'paid',
+                        updated_at = $1
+                    WHERE id = $2
+                    AND organization_id = $3
+                    "#,
+            )
+            .bind(chrono::Utc::now().to_rfc3339())
+            .bind(billing.engagement_id)
+            .bind(billing.organization_id)
+            .execute(db.pool.as_ref())
+            .await;
+
+            if let Err(err) = update_engagement_fee_result {
+                eprintln!("Failed to update engagement platform fee status: {}", err);
+
+                return HttpResponse::InternalServerError()
+                    .body("Failed to update engagement platform fee status");
+            }
+            let _ = maybe_activate_engagement(
+                db.get_ref(),
+                billing.engagement_id,
+                billing.organization_id,
+                None,
             )
             .await;
 

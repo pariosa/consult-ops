@@ -1,6 +1,7 @@
 // backend/src/auth_context.rs
 
 use crate::db::Db;
+use crate::utils::jwt_secret;
 use actix_web::web;
 use actix_web::{Error, FromRequest, HttpRequest, dev::Payload, error::ErrorUnauthorized};
 use chrono::Utc;
@@ -46,7 +47,7 @@ impl FromRequest for AuthUser {
                 .strip_prefix("Bearer ")
                 .ok_or_else(|| ErrorUnauthorized("Missing bearer token"))?;
 
-            let jwt_secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
+            let jwt_secret = jwt_secret();
 
             let decoded = decode::<Claims>(
                 token,

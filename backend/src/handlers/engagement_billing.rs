@@ -17,48 +17,75 @@ pub async fn activate_engagement_from_payment(
     engagement_id: i64,
     organization_id: i64,
 ) -> Result<(), String> {
-    let current_status: String = sqlx::query_scalar::<_, String>(
+    let current_status = sqlx::query_scalar::<_, String>(
         r#"
-    SELECT status
-    FROM engagements
-    WHERE id = $1
-    "#,
+        SELECT status
+        FROM engagements
+        WHERE id = $1
+          AND organization_id = $2
+        "#,
     )
     .bind(engagement_id)
+    .bind(organization_id)
     .fetch_one(db.pool.as_ref())
     .await
     .map_err(|err| err.to_string())?;
 
-    let current_status: EngagementStatus =
-        serde_json::from_value(serde_json::Value::String(current_status.clone()))
-            .map_err(|_| format!("Invalid engagement status: {}", current_status))?;
+    // Payment is valid, but draft engagements are not activatable yet.
+    // This is not an error. It just means agreement setup is still required.
+    if current_status == "draft" {
+        eprintln!(
+            "Activation payment received for draft engagement {}; leaving engagement in draft.",
+            engagement_id
+        );
 
-    let next_status = OperationsKernelService::apply_engagement_event(
-        db.pool.as_ref(),
-        organization_id,
-        engagement_id,
-        None,
-        current_status,
-        EngagementEvent::PaymentReceived,
-    )
-    .await?;
+        return Ok(());
+    }
 
-    let next_status_string = serde_json::to_value(next_status)
-        .ok()
-        .and_then(|v| v.as_str().map(|s| s.to_string()))
-        .unwrap_or_else(|| format!("{:?}", next_status).to_lowercase());
+    // Only auto-activate from statuses that are actually ready.
+    let allowed_statuses = ["contract_signed", "signed", "ready_for_activation"];
+
+    if !allowed_statuses.contains(&current_status.as_str()) {
+        eprintln!(
+            "Activation payment received for engagement {} in status {}; not auto-activating.",
+            engagement_id, current_status
+        );
+
+        return Ok(());
+    }
+
+    let now = chrono::Utc::now().to_rfc3339();
 
     sqlx::query(
         r#"
-    UPDATE engagements
-    SET status = $1,
-        updated_at = CURRENT_TIMESTAMP
-    WHERE id = $2
-    "#,
+        UPDATE engagements
+        SET status = 'activated',
+            platform_fee_status = 'paid',
+            updated_at = $1
+        WHERE id = $2
+          AND organization_id = $3
+        "#,
     )
-    .bind(next_status_string)
+    .bind(&now)
     .bind(engagement_id)
+    .bind(organization_id)
     .execute(db.pool.as_ref())
+    .await
+    .map_err(|err| err.to_string())?;
+
+    crate::services::event_service::EventService::record_event(
+        db.pool.as_ref(),
+        organization_id,
+        None,
+        "engagement",
+        engagement_id,
+        "EngagementActivated",
+        Some(&current_status),
+        Some("activated"),
+        serde_json::json!({
+            "trigger": "activation_payment"
+        }),
+    )
     .await
     .map_err(|err| err.to_string())?;
 

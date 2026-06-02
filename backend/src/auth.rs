@@ -4,6 +4,7 @@ pub mod permissions;
 use crate::auth_context::Claims;
 use crate::db::Db;
 use crate::services::email_notification_service::EmailNotificationService;
+use crate::utils;
 use actix_web::{HttpResponse, Responder, web};
 use argon2::{
     Argon2,
@@ -15,6 +16,7 @@ use rand::{RngCore, rngs::OsRng};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::FromRow;
+use utils::jwt_secret;
 use uuid::Uuid;
 
 #[derive(Debug, FromRow)]
@@ -328,7 +330,7 @@ pub async fn login(db: web::Data<Db>, info: web::Json<AuthInfo>) -> impl Respond
         return HttpResponse::Forbidden().body("Email verification required");
     }
     if verify_password(&info.password, &user.password_hash) {
-        let jwt_secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
+        let jwt_secret = jwt_secret();
 
         let jti = Uuid::new_v4().to_string();
 
@@ -420,23 +422,37 @@ pub async fn forgot_password(
     db: web::Data<Db>,
     info: web::Json<ForgotPasswordRequest>,
 ) -> impl Responder {
+    let normalized_email = info.email.trim().to_lowercase();
+
+    eprintln!("FORGOT PASSWORD REQUEST: {}", normalized_email);
+
     let user = sqlx::query_as::<_, User>(
         r#"
-        SELECT id, email, password_hash, name
+        SELECT
+            id,
+            email,
+            password_hash,
+            name,
+            user_type,
+            email_verified_at
         FROM users
         WHERE email = $1
         "#,
     )
-    .bind(&info.email)
+    .bind(&normalized_email)
     .fetch_one(&*db.pool)
     .await;
 
     let user = match user {
-        Ok(user) => user,
-        Err(_) => {
-            return HttpResponse::Ok().body(
-                "If an account exists for this email, a password reset link has been generated.",
-            );
+        Ok(user) => {
+            eprintln!("FOUND USER {}", user.email);
+            user
+        }
+        Err(err) => {
+            eprintln!("USER LOOKUP FAILED: {}", err);
+
+            return HttpResponse::Ok()
+                .body("If an account exists for this email, a password reset link has been sent.");
         }
     };
 
@@ -446,10 +462,15 @@ pub async fn forgot_password(
 
     let result = sqlx::query(
         r#"
-    INSERT INTO password_reset_tokens
-    (user_id, token_hash, expires_at, created_at)
-    VALUES ($1, $2, $3, $4)
-    "#,
+        INSERT INTO password_reset_tokens
+        (
+            user_id,
+            token_hash,
+            expires_at,
+            created_at
+        )
+        VALUES ($1, $2, $3, $4)
+        "#,
     )
     .bind(user.id)
     .bind(&token_hash)
@@ -460,25 +481,34 @@ pub async fn forgot_password(
 
     match result {
         Ok(_) => {
-            // Dev-only response. Later, email this token instead.
+            eprintln!("RESET TOKEN CREATED");
+
             let app_url =
                 std::env::var("APP_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
 
             let reset_url = format!("{}/reset-password?token={}", app_url, raw_token);
 
-            match EmailNotificationService::email_verification(user.email.clone(), reset_url).await
-            {
-                Ok(_) => eprintln!("Verification email sent to {}", user.email),
-                Err(err) => eprintln!("EMAIL SEND FAILED: {}", err),
+            eprintln!("RESET URL: {}", reset_url);
+
+            match EmailNotificationService::password_reset(user.email.clone(), reset_url).await {
+                Ok(_) => {
+                    eprintln!("PASSWORD RESET EMAIL SENT TO {}", user.email);
+                }
+                Err(err) => {
+                    eprintln!("PASSWORD RESET EMAIL FAILED: {}", err);
+                }
             }
 
             HttpResponse::Ok()
                 .body("If an account exists for this email, a password reset link has been sent.")
         }
-        Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
+        Err(e) => {
+            eprintln!("TOKEN INSERT FAILED: {}", e);
+
+            HttpResponse::InternalServerError().body(e.to_string())
+        }
     }
 }
-
 pub async fn reset_password(
     db: web::Data<Db>,
     info: web::Json<ResetPasswordRequest>,

@@ -4,6 +4,7 @@ use crate::domain::engagement_state::{EngagementEvent, EngagementStatus};
 use crate::models::engagement::{CreateEngagement, CreateEngagementRequest, Engagement};
 use crate::services::authz::{require_org_member, require_org_role};
 use crate::services::email_notification_service::EmailNotificationService;
+use crate::services::engagement_activation_service::maybe_activate_engagement;
 use crate::services::event_service::EventService;
 use crate::services::notification_email_recipient_service::NotificationRecipientService;
 use crate::services::notification_service::NotificationService;
@@ -523,7 +524,58 @@ pub async fn mark_contract_sent(
     path: web::Path<i64>,
 ) -> impl Responder {
     let engagement_id = path.into_inner();
+    let organization_id: i64 = match sqlx::query_scalar(
+        r#"
+    SELECT organization_id
+    FROM engagements
+    WHERE id = $1
+    "#,
+    )
+    .bind(engagement_id)
+    .fetch_one(db.pool.as_ref())
+    .await
+    {
+        Ok(id) => id,
+        Err(err) => {
+            eprintln!(
+                "Failed to load organization_id for engagement {}: {}",
+                engagement_id, err
+            );
 
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to load engagement organization."
+            }));
+        }
+    };
+
+    let _ = maybe_activate_engagement(db.get_ref(), engagement_id, organization_id, Some(auth.id))
+        .await;
+    let organization_id: i64 = match sqlx::query_scalar(
+        r#"
+    SELECT organization_id
+    FROM engagements
+    WHERE id = $1
+    "#,
+    )
+    .bind(engagement_id)
+    .fetch_one(db.pool.as_ref())
+    .await
+    {
+        Ok(id) => id,
+        Err(err) => {
+            eprintln!(
+                "Failed to load organization_id for engagement {}: {}",
+                engagement_id, err
+            );
+
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to load engagement organization."
+            }));
+        }
+    };
+
+    let _ = maybe_activate_engagement(db.get_ref(), engagement_id, organization_id, Some(auth.id))
+        .await;
     let response = apply_engagement_lifecycle_event(
         db.clone(),
         auth,
@@ -564,6 +616,7 @@ pub async fn mark_signed(
     path: web::Path<i64>,
 ) -> impl Responder {
     let engagement_id = path.into_inner();
+    let actor_user_id = auth.id;
 
     let response = apply_engagement_lifecycle_event(
         db.clone(),
@@ -572,7 +625,36 @@ pub async fn mark_signed(
         EngagementEvent::ContractSigned,
     )
     .await;
+    let organization_id: i64 = match sqlx::query_scalar(
+        r#"
+    SELECT organization_id
+    FROM engagements
+    WHERE id = $1
+    "#,
+    )
+    .bind(engagement_id)
+    .fetch_one(db.pool.as_ref())
+    .await
+    {
+        Ok(id) => id,
+        Err(err) => {
+            eprintln!(
+                "Failed to load organization_id for engagement {}: {}",
+                engagement_id, err
+            );
 
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to load engagement organization."
+            }));
+        }
+    };
+    let _ = maybe_activate_engagement(
+        db.get_ref(),
+        engagement_id,
+        organization_id,
+        Some(actor_user_id),
+    )
+    .await;
     if response.status().is_success() {
         if let Ok((contractor_email, title)) = engagement_email_context(&db, engagement_id).await {
             if let Err(err) =

@@ -60,31 +60,6 @@ impl EmailNotificationService {
         .await
     }
 
-    pub async fn password_reset(to: String, reset_url: String) -> Result<(), String> {
-        Self::send(EmailMessage {
-            to,
-            subject: "Reset your Consult Ops password".to_string(),
-            body: format!(
-                "Reset your password here:\n{}\n\nIf you did not request this, you can ignore this email.",
-                reset_url
-            ),
-        })
-        .await
-    }
-
-    // keep your existing invitation/contract/payment methods below
-    pub async fn invitation(to: String, role: String, invite_url: String) -> Result<(), String> {
-        Self::send(EmailMessage {
-            to,
-            subject: "You're invited to join Consult Ops".to_string(),
-            body: format!(
-                "You've been invited to join Consult Ops as {}.\n\nAccept your invitation here:\n{}",
-                role, invite_url
-            ),
-        })
-        .await
-    }
-
     pub async fn invitation_accepted(
         to: String,
         accepted_email: String,
@@ -175,7 +150,30 @@ impl EmailNotificationService {
         })
         .await
     }
+    pub async fn password_reset(to: String, reset_url: String) -> Result<(), String> {
+        Self::send(EmailMessage {
+            to,
+            subject: "Reset your Consult Ops password".to_string(),
+            body: format!(
+                "Reset your password here:\n{}\n\nIf you did not request this, you can ignore this email.",
+                reset_url
+            ),
+        })
+        .await
+    }
 
+    // keep your existing invitation/contract/payment methods below
+    pub async fn invitation(to: String, role: String, invite_url: String) -> Result<(), String> {
+        Self::send(EmailMessage {
+            to,
+            subject: "You're invited to join Consult Ops".to_string(),
+            body: format!(
+                "You've been invited to join Consult Ops as {}.\n\nAccept your invitation here:\n{}",
+                role, invite_url
+            ),
+        })
+        .await
+    }
     pub async fn engagement_completed(to: String, title: String) -> Result<(), String> {
         Self::send(EmailMessage {
             to,

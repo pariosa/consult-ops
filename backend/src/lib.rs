@@ -1,3 +1,4 @@
+//backend/src/lib.rs
 pub mod auth;
 pub mod auth_context;
 pub mod db;

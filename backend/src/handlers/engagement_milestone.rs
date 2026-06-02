@@ -341,6 +341,37 @@ pub async fn approve_engagement_milestone(
     }
 
     println!("Approving milestone_id: {}", milestone_id);
+    let status_result = sqlx::query_scalar::<_, String>(
+        r#"
+    SELECT e.status
+    FROM engagement_milestones m
+    JOIN engagements e ON e.id = m.engagement_id
+    WHERE m.id = $1
+    "#,
+    )
+    .bind(milestone_id)
+    .fetch_one(db.pool.as_ref())
+    .await;
+
+    let status = match status_result {
+        Ok(status) => status,
+        Err(err) => {
+            eprintln!(
+                "Failed to load engagement status for milestone approval: {}",
+                err
+            );
+
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to validate engagement status before milestone approval."
+            }));
+        }
+    };
+
+    if status != "activated" {
+        return HttpResponse::Conflict().json(serde_json::json!({
+            "error": "Engagement must be activated before milestones can be approved."
+        }));
+    }
 
     match EngagementMilestone::update_status(db.pool.as_ref(), milestone_id, "approved").await {
         Ok(item) => {

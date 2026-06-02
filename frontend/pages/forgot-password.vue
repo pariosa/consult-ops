@@ -12,13 +12,18 @@ const submit = async (payload: { email: string }) => {
   devResetToken.value = '';
 
   try {
-    const res = await fetch('http://127.0.0.1:8000/api/auth/forgot-password', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    const config = useRuntimeConfig();
+
+    const res = await fetch(
+      `${config.public.apiBase}/api/auth/forgot-password`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
       },
-      body: JSON.stringify(payload),
-    });
+    );
 
     // Try parsing optional dev token
     try {

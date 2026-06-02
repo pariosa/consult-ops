@@ -13,7 +13,6 @@ const token = computed(() => {
   const value = route.query.token;
   return typeof value === 'string' ? value : '';
 });
-const { post } = useApi();
 const submit = async (payload: { password: string }) => {
   message.value = '';
   error.value = '';
@@ -23,21 +22,27 @@ const submit = async (payload: { password: string }) => {
     return;
   }
 
-  const res = await post('http://127.0.0.1:8000/api/auth/reset-password', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      token: token.value,
-      password: payload.password,
-    }),
-  });
+  try {
+    const res = await fetch('http://127.0.0.1:8000/api/auth/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: token.value,
+        password: payload.password,
+      }),
+    });
 
-  if (!res.ok) {
-    error.value = await res.text();
-    return;
+    const text = await res.text();
+
+    if (!res.ok) {
+      error.value = text || 'Password reset failed.';
+      return;
+    }
+
+    message.value = text || 'Password reset successful.';
+  } catch (err: any) {
+    error.value = err?.message || 'Password reset failed.';
   }
-
-  message.value = await res.text();
 };
 </script>
 
