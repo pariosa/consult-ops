@@ -77,6 +77,7 @@ pub use party::{
     get_party_payment_readiness, list_organization_parties, mark_party_payer_authorized_dev,
     mark_party_payout_ready_dev, upsert_party_payment_profile, verify_party,
 };
+pub use project::get_project_by_id;
 pub use stripe_webhook::stripe_webhook;
 
 pub use admin_user::{

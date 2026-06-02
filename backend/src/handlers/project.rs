@@ -5,6 +5,7 @@ use crate::services::authz::{require_org_member, require_org_role};
 use crate::services::event_service::EventService;
 use actix_web::{HttpResponse, Responder, ResponseError, web};
 use chrono::Utc;
+use sqlx::SqlitePool;
 
 async fn organization_id_for_client(db: &Db, client_id: i64) -> Result<i64, sqlx::Error> {
     sqlx::query_scalar::<_, i64>(
@@ -32,6 +33,53 @@ pub async fn get_projects(db: web::Data<Db>, auth: AuthUser) -> impl Responder {
             eprintln!("DB error: {}", e);
             HttpResponse::InternalServerError().body("Failed to fetch projects")
         }
+    }
+}
+
+pub async fn get_project_by_id(
+    db: web::Data<Db>,
+    auth: AuthUser,
+    path: web::Path<i64>,
+) -> impl Responder {
+    let id = path.into_inner();
+
+    let result = sqlx::query_as::<_, crate::models::project::Project>(
+        r#"
+        SELECT
+            id,
+            organization_id,
+            client_id,
+            name,
+            start_date,
+            end_date,
+            description,
+            created_at
+        FROM projects
+        WHERE id = $1
+        "#,
+    )
+    .bind(id)
+    .fetch_optional(db.pool.as_ref())
+    .await;
+
+    match result {
+        Ok(Some(project)) => {
+            if let Err(err) =
+                require_org_member(db.pool.as_ref(), auth.id, project.organization_id).await
+            {
+                return err.error_response();
+            }
+
+            HttpResponse::Ok().json(project)
+        }
+
+        Ok(None) => HttpResponse::NotFound().json(serde_json::json!({
+            "message": format!("Project #{} not found", id)
+        })),
+
+        Err(err) => HttpResponse::InternalServerError().json(serde_json::json!({
+            "message": err.to_string()
+        })),
     }
 }
 

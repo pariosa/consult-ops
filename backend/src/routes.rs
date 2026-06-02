@@ -18,7 +18,7 @@ use crate::handlers::{
     get_my_organization, get_organization, get_organization_clients, get_organization_contracts,
     get_organization_finance_summary, get_organization_invoices, get_organization_members,
     get_organization_party_balances, get_organization_payments, get_organization_projects,
-    get_organization_subscription, get_party_payment_readiness, get_payments,
+    get_organization_subscription, get_party_payment_readiness, get_payments, get_project_by_id,
     get_project_portal_summary, get_projects, get_user_by_id, get_user_memberships, get_users,
     invite_organization_member, list_agreement_payout_rules, list_engagement_billing,
     list_engagement_events, list_engagement_milestones, list_engagement_transactions,
@@ -199,6 +199,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
                 "/engagement-billing/{id}/mark-paid",
                 web::post().to(mark_billing_paid),
             )
+            .route("/projects/{id}", web::get().to(get_project_by_id))
             .route(
                 "/projects/{project_id}/engagements",
                 web::post().to(create_for_project),
