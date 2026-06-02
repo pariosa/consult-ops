@@ -212,6 +212,7 @@ await refresh();
 
             <button
               v-if="milestone.status === 'pending'"
+              data-testid="submit-milestone-button"
               class="form-button"
               type="button"
               @click="submit(milestone.id)"
@@ -221,6 +222,7 @@ await refresh();
 
             <button
               v-if="milestone.status === 'submitted'"
+              data-testid="approve-milestone-button"
               class="form-button"
               type="button"
               @click="approve(milestone.id)"

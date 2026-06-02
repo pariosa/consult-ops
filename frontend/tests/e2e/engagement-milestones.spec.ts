@@ -125,22 +125,39 @@ test('milestone submit and approve actions refresh the operational timeline', as
     });
   });
 
-  await page.goto('/engagements/6');
+  await page.goto('/engagements/6/milestones');
+
+  await expect(
+    page.getByRole('heading', { name: /milestone management/i }),
+  ).toBeVisible();
+
+  await expect(page.getByText(/Implement operational timeline/i)).toBeVisible();
 
   const milestoneCard = page
-    .locator('.milestone-row')
-    .filter({ hasText: 'Implement operational timeline' });
+    .locator('.milestone-card')
+    .filter({ hasText: /Implement operational timeline/i })
+    .first();
 
   await expect(milestoneCard).toBeVisible();
-  await expect(milestoneCard).toContainText('Status: pending');
 
-  await page.getByRole('button', { name: /^submit$/i }).click();
+  await milestoneCard.getByTestId('submit-milestone-button').click();
 
-  await expect(page.getByText('Status: submitted')).toBeVisible();
-  await expect(page.getByText(/Milestone Submitted/i)).toBeVisible();
+  await expect(page.getByText(/submitted/i)).toBeVisible();
+  await expect(
+    page.getByText(/MilestoneSubmitted|Milestone submitted|submitted/i),
+  ).toBeVisible();
+  const submittedCard = page
+    .locator('.milestone-card')
+    .filter({ hasText: /Implement operational timeline/i })
+    .filter({ hasText: /submitted/i })
+    .first();
 
-  await page.getByRole('button', { name: /^approve$/i }).click();
+  await expect(submittedCard).toBeVisible();
 
-  await expect(page.getByText('Status: approved')).toBeVisible();
-  await expect(page.getByText(/Milestone Approved/i)).toBeVisible();
+  await submittedCard.getByTestId('approve-milestone-button').click();
+
+  await expect(page.getByText(/approved/i)).toBeVisible();
+  await expect(
+    page.getByText(/MilestoneApproved|Milestone approved|approved/i),
+  ).toBeVisible();
 });

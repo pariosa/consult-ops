@@ -34,7 +34,7 @@ const navItems = computed(() =>
     },
     {
       label: 'Projects',
-      to: './organization/projects',
+      to: '/organization/projects',
       show: true,
     },
     {
@@ -53,25 +53,31 @@ const navItems = computed(() =>
 </script>
 
 <template>
-  <aside class="org-sidebar">
-    <div class="sidebar-header">
-      <p class="eyebrow">Workspace</p>
-      <h2>Consult Ops</h2>
-      <span class="role-pill">{{ role || 'member' }}</span>
-    </div>
+  <div class="org-layout">
+    <aside class="org-sidebar">
+      <div class="sidebar-header">
+        <p class="eyebrow">Workspace</p>
+        <h2>Consult Ops</h2>
+        <span class="role-pill">{{ role || 'member' }}</span>
+      </div>
 
-    <nav class="nav-list">
-      <NuxtLink
-        v-for="item in navItems"
-        :key="item.to"
-        :to="item.to"
-        class="nav-link"
-        active-class="active"
-      >
-        {{ item.label }}
-      </NuxtLink>
-    </nav>
-  </aside>
+      <nav class="nav-list">
+        <NuxtLink
+          v-for="item in navItems"
+          :key="item.to"
+          :to="item.to"
+          class="nav-link"
+          active-class="active"
+        >
+          {{ item.label }}
+        </NuxtLink>
+      </nav>
+    </aside>
+
+    <main class="org-main">
+      <slot />
+    </main>
+  </div>
 </template>
 
 <style scoped>
@@ -133,5 +139,18 @@ h2 {
   background: rgba(45, 212, 191, 0.1);
   border-color: rgba(45, 212, 191, 0.28);
   color: #f8fafc;
+}
+.org-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 24px;
+  width: 100%;
+  min-height: calc(100vh - 120px);
+  padding: 24px;
+}
+
+.org-main {
+  min-width: 0;
+  width: 100%;
 }
 </style>

@@ -1,10 +1,18 @@
 <template>
-  <div class="project-card" :class="cardClass">
+  <article class="project-card" :class="cardClass">
     <div class="header">
       <div>
         <h3>{{ project.name }}</h3>
         <small>Client #{{ project.client_id }}</small>
       </div>
+
+      <NuxtLink
+        class="open-link"
+        :to="`/projects/${project.id}`"
+        :data-testid="`project-card-${project.id}`"
+      >
+        Open Project
+      </NuxtLink>
     </div>
 
     <div class="grid">
@@ -23,7 +31,7 @@
       <small>{{ project.description }}</small>
       <small>{{ project.created_at }}</small>
     </div>
-  </div>
+  </article>
 </template>
 
 <script setup lang="ts">
@@ -84,6 +92,30 @@ const cardClass = computed(() => {
 }
 .active::before {
   background: linear-gradient(135deg, #22c55e, #3b82f6);
+}
+.header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.open-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem 0.75rem;
+  border-radius: 999px;
+  background: #0f172a;
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.open-link:hover {
+  background: #0891b2;
 }
 
 .draft {
