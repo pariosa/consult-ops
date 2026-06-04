@@ -26,6 +26,8 @@ pub mod stripe_webhook;
 pub mod subscription;
 mod user;
 
+pub mod platform_dashboard;
+
 pub use platform_admin::{
     assign_platform_user_to_organization, create_platform_organization, create_platform_user,
     list_platform_organization_members, list_platform_organizations, list_platform_users,
@@ -87,6 +89,10 @@ pub use operational_finance::{get_organization_finance_summary, get_organization
 pub use operational_transaction::{
     cancel_transaction, list_engagement_transactions, list_organization_transactions,
     mark_transaction_failed, mark_transaction_paid, mark_transaction_processing,
+};
+pub use platform_dashboard::{
+    get_platform_activity, get_platform_alerts, get_platform_dashboard, get_platform_funnel,
+    get_platform_overview, platform_search,
 };
 pub use subscription::{
     cancel_subscription_dev, get_organization_subscription, mark_subscription_active_dev,

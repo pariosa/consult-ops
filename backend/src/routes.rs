@@ -18,18 +18,20 @@ use crate::handlers::{
     get_my_organization, get_organization, get_organization_clients, get_organization_contracts,
     get_organization_finance_summary, get_organization_invoices, get_organization_members,
     get_organization_party_balances, get_organization_payments, get_organization_projects,
-    get_organization_subscription, get_party_payment_readiness, get_payments, get_project_by_id,
-    get_project_portal_summary, get_projects, get_user_by_id, get_user_memberships, get_users,
-    invite_organization_member, list_agreement_payout_rules, list_engagement_billing,
-    list_engagement_events, list_engagement_milestones, list_engagement_transactions,
-    list_for_project, list_my_notifications, list_my_organizations, list_organization_agreements,
+    get_organization_subscription, get_party_payment_readiness, get_payments,
+    get_platform_activity, get_platform_alerts, get_platform_dashboard, get_platform_funnel,
+    get_platform_overview, get_project_by_id, get_project_portal_summary, get_projects,
+    get_user_by_id, get_user_memberships, get_users, invite_organization_member,
+    list_agreement_payout_rules, list_engagement_billing, list_engagement_events,
+    list_engagement_milestones, list_engagement_transactions, list_for_project,
+    list_my_notifications, list_my_organizations, list_organization_agreements,
     list_organization_events, list_organization_invitations, list_organization_members,
     list_organization_parties, list_organization_transactions, list_payout_rules,
     list_platform_organization_members, list_platform_organizations, list_platform_users,
     lock_agreement, mark_all_notifications_read, mark_billing_paid, mark_contract_sent,
     mark_engagement_milestone_paid, mark_notification_read, mark_party_payer_authorized_dev,
     mark_party_payout_ready_dev, mark_signed, mark_subscription_active_dev,
-    mark_transaction_failed, mark_transaction_paid, mark_transaction_processing,
+    mark_transaction_failed, mark_transaction_paid, mark_transaction_processing, platform_search,
     reopen_engagement_milestone, resend_contract, revoke_user_sessions, set_current_organization,
     show, stripe_webhook, submit_engagement_milestone, update_contract_recipient,
     update_engagement_milestone, update_organization, update_organization_member, update_user_type,
@@ -389,6 +391,12 @@ pub fn config(cfg: &mut web::ServiceConfig) {
                 "/platform/organizations/{id}/members",
                 web::post().to(assign_platform_user_to_organization),
             )
+            .route("/platform/overview", web::get().to(get_platform_overview))
+            .route("/platform/alerts", web::get().to(get_platform_alerts))
+            .route("/platform/activity", web::get().to(get_platform_activity))
+            .route("/platform/funnel", web::get().to(get_platform_funnel))
+            .route("/platform/dashboard", web::get().to(get_platform_dashboard))
+            .route("/platform/search", web::get().to(platform_search))
             .route("/notifications", web::get().to(list_my_notifications))
             .route(
                 "/notifications/read-all",
