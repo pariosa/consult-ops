@@ -63,7 +63,9 @@ test('engagement page shows operational timeline and activation billing', async 
   await expect(page.getByText('Build DevOps Platform')).toBeVisible();
   await expect(page.getByText('Operational History')).toBeVisible();
   await expect(page.getByText('Activation Billing')).toBeVisible();
-  await expect(page.getByText('activation_fee')).toBeVisible();
+  await expect(
+    page.getByText('Activation Fee Created', { exact: true }),
+  ).toBeVisible();
 });
 
 test('pay activation fee redirects to Stripe checkout URL', async ({

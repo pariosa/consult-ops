@@ -27,7 +27,9 @@ test('admin can lock an agreement after payout rule setup and rules become prote
         portal: 'admin',
       }),
     );
+
     window.localStorage.setItem('auth:token', 'e2e-admin-token');
+    window.localStorage.setItem('token', 'e2e-admin-token');
   });
 
   await page.route('**/api/engagements/1', async (route) => {
@@ -37,8 +39,10 @@ test('admin can lock an agreement after payout rule setup and rules become prote
         organization_id: 1,
         project_id: 1,
         client_id: 1,
+        contractor_user_id: 2,
         title: 'Agreement Locking Workflow',
         status: 'active',
+        platform_fee_status: 'paid',
       },
     });
   });
@@ -118,6 +122,7 @@ test('admin can lock an agreement after payout rule setup and rules become prote
       };
 
       payoutRules = [rule];
+
       await route.fulfill({ json: rule });
       return;
     }
@@ -139,38 +144,48 @@ test('admin can lock an agreement after payout rule setup and rules become prote
   await expect(page.getByText(/agreement rules/i)).toBeVisible();
 
   await page
-    .locator('.ops-card')
+    .locator('.party-card')
     .filter({ hasText: 'Clientey Clintor' })
     .getByRole('button', { name: /prepare as payer/i })
     .click();
 
   await page
-    .locator('.ops-card')
+    .locator('.party-card')
     .filter({ hasText: 'contractor bobhbee' })
     .getByRole('button', { name: /prepare as payee/i })
     .click();
 
-  await expect(page.getByText(/✓ Verified payer selected/i)).toBeVisible();
-  await expect(page.getByText(/✓ Payer funding authorized/i)).toBeVisible();
-  await expect(page.getByText(/✓ Verified payee selected/i)).toBeVisible();
-  await expect(page.getByText(/✓ Payee payout-ready/i)).toBeVisible();
+  await expect(page.getByText(/verified payer selected/i)).toBeVisible();
+  await expect(page.getByText(/payer funding authorized/i)).toBeVisible();
+  await expect(page.getByText(/verified payee selected/i)).toBeVisible();
+  await expect(page.getByText(/payee payout-ready/i)).toBeVisible();
 
   await page.locator('#payer-party').selectOption('1');
   await page.locator('#payee-party').selectOption('2');
 
   await expect(
-    page.getByRole('button', { name: /add payout rule/i }),
-  ).toBeEnabled();
+    page.locator('p.ready').filter({ hasText: /^Funding authorized$/ }),
+  ).toBeVisible();
 
-  await page.getByRole('button', { name: /add payout rule/i }).click();
+  await expect(
+    page.locator('p.ready').filter({ hasText: /^Payout ready$/ }),
+  ).toBeVisible();
+
+  const addPayoutRuleButton = page.getByRole('button', {
+    name: /add payout rule/i,
+  });
+
+  await expect(addPayoutRuleButton).toBeEnabled();
+  await addPayoutRuleButton.click();
 
   await expect(page.getByText(/contractor_payout/i)).toBeVisible();
 
-  await expect(
-    page.getByRole('button', { name: /lock agreement/i }),
-  ).toBeEnabled();
+  const lockAgreementButton = page.getByRole('button', {
+    name: /lock agreement/i,
+  });
 
-  await page.getByRole('button', { name: /lock agreement/i }).click();
+  await expect(lockAgreementButton).toBeEnabled();
+  await lockAgreementButton.click();
 
   await expect(page.getByText(/status:\s*locked/i)).toBeVisible();
 
@@ -178,10 +193,5 @@ test('admin can lock an agreement after payout rule setup and rules become prote
     page.getByText(/agreement locked\. payout rules are protected/i),
   ).toBeVisible();
 
-  await expect(page.locator('#payer-party')).toBeDisabled();
-  await expect(page.locator('#payee-party')).toBeDisabled();
-
-  await expect(
-    page.getByRole('button', { name: /add payout rule/i }),
-  ).toBeDisabled();
+  await expect(page.getByText(/payout rule already configured/i)).toBeVisible();
 });

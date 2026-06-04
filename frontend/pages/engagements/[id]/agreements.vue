@@ -527,7 +527,6 @@ onMounted(refresh);
             v-model.number="payoutRuleForm.from_party_id"
             class="form-input"
             :disabled="agreementLocked"
-            @change="preparePayer(Number(payoutRuleForm.from_party_id))"
           >
             <option :value="null">Select payer</option>
             <option
@@ -545,7 +544,6 @@ onMounted(refresh);
             v-model.number="payoutRuleForm.to_party_id"
             class="form-input"
             :disabled="agreementLocked"
-            @change="preparePayee(Number(payoutRuleForm.to_party_id))"
           >
             <option :value="null">Select payee</option>
             <option

@@ -16,8 +16,8 @@ export function useEngagements() {
       method: 'POST',
     });
   }
-  const getTransactionReadiness = (projectId: number) => {
-    get(`/api/projects/${projectId}/transaction-readiness`);
+  const getTransactionReadiness = (engagementId: number) => {
+    get(`/api/engagements/${engagementId}/transaction-readiness`);
   };
   const getProjectEngagements = (projectId: number) =>
     get(`/api/projects/${projectId}/engagements`);

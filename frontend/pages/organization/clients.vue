@@ -92,18 +92,34 @@ onMounted(refresh);
       <p class="eyebrow">Create Client</p>
 
       <div class="form-grid">
-        <label>Name</label>
-        <input v-model="form.name" class="form-input" />
+        <div class="form-field">
+          <label for="client-name">Name</label>
+          <input id="client-name" v-model="form.name" class="form-input" />
+        </div>
 
-        <label>Email</label>
-        <input v-model="form.email" class="form-input" />
+        <div class="form-field">
+          <label for="client-email">Email</label>
+          <input
+            id="client-email"
+            v-model="form.email"
+            type="email"
+            class="form-input"
+          />
+        </div>
 
-        <label>Company</label>
-        <input v-model="form.company" class="form-input" />
+        <div class="form-field">
+          <label for="client-company">Company</label>
+          <input
+            id="client-company"
+            v-model="form.company"
+            class="form-input"
+          />
+        </div>
 
-        <label>Phone</label>
-        <input v-model="form.phone" class="form-input" />
-
+        <div class="form-field">
+          <label for="client-phone">Phone</label>
+          <input id="client-phone" v-model="form.phone" class="form-input" />
+        </div>
         <button
           class="form-button"
           :disabled="saving || !form.name || !form.email"
