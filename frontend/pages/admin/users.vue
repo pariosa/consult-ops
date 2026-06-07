@@ -7,7 +7,7 @@ import { useApi } from '~/composables/useApi';
 
 definePageMeta({
   middleware: ['role'],
-  allowedUserTypes: ['admin', 'super_admin'],
+  allowedUserTypes: ['super_admin'],
 });
 
 const api = useApi();

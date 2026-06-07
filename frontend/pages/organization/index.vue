@@ -1,9 +1,12 @@
+<!-- frontend/pages/organization/index.vue -->
 <script setup lang="ts">
-import OrganizationSidebar from '~/layouts/organization.vue';
+import { computed, onMounted, ref } from 'vue';
+import DashboardShell from '~/components/DashboardShell.vue';
 import { useApi } from '~/composables/useApi';
 import { usePermissions } from '~/composables/usePermissions';
 
 const api = useApi();
+
 const { canManageFinance, canManageAgreements, canProcessTransactions, role } =
   usePermissions();
 
@@ -15,20 +18,21 @@ const cards = computed(() =>
   [
     {
       title: 'Members',
-      description: 'View active workspace users and assigned roles.',
+      description: 'View workspace users, assigned roles, and access levels.',
       to: '/organization/members',
       show: canManageAgreements.value,
     },
     {
       title: 'Invitations',
       description:
-        'Invite contractors, finance admins, clients, and operators.',
+        'Invite operators, finance admins, contractors, and clients.',
       to: '/organization/invitations',
       show: canManageAgreements.value,
     },
     {
       title: 'Operational Finance',
-      description: 'Review outstanding obligations, balances, and paid totals.',
+      description:
+        'Review obligations, balances, paid totals, and settlement risk.',
       to: '/organization/finance',
       show: canManageFinance.value,
     },
@@ -41,33 +45,33 @@ const cards = computed(() =>
     {
       title: 'Projects',
       description: 'Track projects connected to clients and engagements.',
-      to: '/projects',
+      to: '/organization/projects',
       show: true,
     },
     {
       title: 'Clients',
       description: 'Manage client records and verified client parties.',
-      to: '/clients',
+      to: '/organization/clients',
       show: true,
     },
     {
       title: 'Transactions',
-      description:
-        'Open an engagement transaction ledger from an engagement page.',
-      to: '/engagements',
-      show: canProcessTransactions.value,
+      description: 'Review generated obligations from engagement workflows.',
+      to: '/organization/transactions',
+      show: canProcessTransactions.value || canManageFinance.value,
     },
     {
       title: 'Agreements',
-      description: 'Configure payout rules from an engagement agreement page.',
+      description:
+        'Configure payout rules and payment certainty for engagements.',
       to: '/engagements',
       show: canManageAgreements.value,
     },
     {
       title: 'Milestones',
-      description: 'Submit, approve, and pay milestone work.',
+      description: 'Submit, approve, and mark milestone work as paid.',
       to: '/engagements',
-      show: canProcessTransactions.value,
+      show: canProcessTransactions.value || canManageAgreements.value,
     },
   ].filter((card) => card.show),
 );
@@ -97,48 +101,37 @@ onMounted(refresh);
       Loading workspace...
     </section>
 
-    <section v-else-if="error" class="form-error">{{ error }}</section>
+    <section v-else-if="error" class="form-error">
+      {{ error }}
+    </section>
 
-    <div v-else class="workspace-layout">
-      <OrganizationSidebar />
+    <template v-else>
+      <section class="portal-section hero">
+        <p class="eyebrow">Organization Workspace</p>
+        <h2>{{ organization?.name || 'Your Organization' }}</h2>
+        <p>
+          You are signed in as <strong>{{ role || 'member' }}</strong
+          >. The tools below are filtered by your operational permissions.
+        </p>
+      </section>
 
-      <main class="workspace-main">
-        <section class="portal-section hero">
-          <p class="eyebrow">Organization Workspace</p>
-          <h2>{{ organization?.name || 'Your Organization' }}</h2>
-          <p>
-            You are signed in as <strong>{{ role || 'member' }}</strong
-            >. The tools below are filtered by your operational permissions.
-          </p>
-        </section>
-
-        <section class="card-grid">
-          <NuxtLink
-            v-for="card in cards"
-            :key="card.title"
-            :to="card.to"
-            class="workspace-card"
-          >
-            <p class="eyebrow">{{ card.title }}</p>
-            <h3>{{ card.title }}</h3>
-            <p>{{ card.description }}</p>
-          </NuxtLink>
-        </section>
-      </main>
-    </div>
+      <section class="card-grid">
+        <NuxtLink
+          v-for="card in cards"
+          :key="card.title"
+          :to="card.to"
+          class="workspace-card"
+        >
+          <p class="eyebrow">{{ card.title }}</p>
+          <h3>{{ card.title }}</h3>
+          <p>{{ card.description }}</p>
+        </NuxtLink>
+      </section>
+    </template>
   </DashboardShell>
 </template>
 
 <style scoped>
-.workspace-layout {
-  display: grid;
-  gap: 20px;
-}
-
-.workspace-main {
-  min-width: 0;
-}
-
 .portal-section {
   border: 1px solid rgba(45, 212, 191, 0.22);
   border-radius: 18px;
@@ -159,6 +152,7 @@ onMounted(refresh);
 
 .hero p {
   color: #cbd5e1;
+  max-width: 780px;
 }
 
 .eyebrow {
@@ -173,6 +167,7 @@ onMounted(refresh);
 .card-grid {
   display: grid;
   gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
 .workspace-card {
@@ -209,16 +204,5 @@ onMounted(refresh);
   background: rgba(127, 29, 29, 0.24);
   color: #fecaca;
   padding: 16px;
-}
-
-@media (min-width: 980px) {
-  .workspace-layout {
-    grid-template-columns: 280px minmax(0, 1fr);
-    align-items: start;
-  }
-
-  .card-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
 }
 </style>

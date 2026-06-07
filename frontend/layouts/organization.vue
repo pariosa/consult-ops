@@ -1,3 +1,4 @@
+<!-- frontend/layouts/organization.vue -->
 <script setup lang="ts">
 import { computed } from 'vue';
 import { usePermissions } from '~/composables/usePermissions';
