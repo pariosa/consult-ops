@@ -380,3 +380,199 @@ async fn suspended_member_cannot_be_reactivated_by_approval() {
 
     assert_eq!(membership_status, "suspended");
 }
+
+#[actix_web::test]
+#[serial]
+async fn only_owner_or_admin_can_list_pending_requests() {
+    let db = setup_test_db().await;
+    let org = seed_org(&db, "public").await;
+
+    let owner = seed_user(&db, "list-owner@example.com").await;
+    let admin = seed_user(&db, "list-admin@example.com").await;
+    let member = seed_user(&db, "list-member@example.com").await;
+    seed_user(&db, "list-applicant@example.com").await;
+
+    seed_membership(&db, org, owner, "owner", "active").await;
+    seed_membership(&db, org, admin, "admin", "active").await;
+    seed_membership(&db, org, member, "member", "active").await;
+
+    let owner_token = login(&db, "list-owner@example.com").await;
+    let admin_token = login(&db, "list-admin@example.com").await;
+    let member_token = login(&db, "list-member@example.com").await;
+    let applicant_token = login(&db, "list-applicant@example.com").await;
+
+    let uri = format!("/api/organizations/{org}/join-requests");
+
+    let (created, _) = post(&db, &applicant_token, &uri).await;
+    assert_eq!(created, StatusCode::CREATED);
+
+    for token in [&owner_token, &admin_token] {
+        let (status, body) = get(&db, token, &uri).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body.as_array().unwrap().len(), 1);
+        assert_eq!(body[0]["status"], "pending");
+    }
+
+    let (status, _) = get(&db, &member_token, &uri).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[actix_web::test]
+#[serial]
+async fn admin_cannot_approve_another_organizations_request() {
+    let db = setup_test_db().await;
+
+    let org_a = seed_org(&db, "public").await;
+    let org_b = seed_org(&db, "public").await;
+
+    let admin = seed_user(&db, "cross-admin@example.com").await;
+    let applicant = seed_user(&db, "cross-applicant@example.com").await;
+
+    seed_membership(&db, org_a, admin, "admin", "active").await;
+
+    let admin_token = login(&db, "cross-admin@example.com").await;
+    let applicant_token = login(&db, "cross-applicant@example.com").await;
+
+    let (created, request) = post(
+        &db,
+        &applicant_token,
+        &format!("/api/organizations/{org_b}/join-requests"),
+    )
+    .await;
+
+    assert_eq!(created, StatusCode::CREATED);
+    let request_id = request["id"].as_i64().unwrap();
+
+    let (status, _) = post(
+        &db,
+        &admin_token,
+        &format!("/api/organizations/{org_b}/join-requests/{request_id}/approve"),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM organization_members WHERE organization_id = $1 AND user_id = $2",
+    )
+    .bind(org_b)
+    .bind(applicant)
+    .fetch_one(db.pool.as_ref())
+    .await
+    .unwrap();
+
+    assert_eq!(count, 0);
+}
+
+#[actix_web::test]
+#[serial]
+async fn repeated_rejection_returns_conflict() {
+    let db = setup_test_db().await;
+    let org = seed_org(&db, "public").await;
+
+    let owner = seed_user(&db, "repeat-owner@example.com").await;
+    seed_user(&db, "repeat-applicant@example.com").await;
+
+    seed_membership(&db, org, owner, "owner", "active").await;
+
+    let owner_token = login(&db, "repeat-owner@example.com").await;
+    let applicant_token = login(&db, "repeat-applicant@example.com").await;
+
+    let (created, request) = post(
+        &db,
+        &applicant_token,
+        &format!("/api/organizations/{org}/join-requests"),
+    )
+    .await;
+
+    assert_eq!(created, StatusCode::CREATED);
+    let request_id = request["id"].as_i64().unwrap();
+
+    let uri = format!("/api/organizations/{org}/join-requests/{request_id}/reject");
+
+    let (first, _) = post(&db, &owner_token, &uri).await;
+    let (second, _) = post(&db, &owner_token, &uri).await;
+
+    assert_eq!(first, StatusCode::OK);
+    assert_eq!(second, StatusCode::CONFLICT);
+
+    let status: String =
+        sqlx::query_scalar("SELECT status FROM organization_join_requests WHERE id = $1")
+            .bind(request_id)
+            .fetch_one(db.pool.as_ref())
+            .await
+            .unwrap();
+
+    assert_eq!(status, "rejected");
+}
+
+#[actix_web::test]
+#[serial]
+async fn concurrent_approval_and_rejection_have_one_winner() {
+    let db = setup_test_db().await;
+    let org = seed_org(&db, "public").await;
+
+    let owner = seed_user(&db, "race-owner@example.com").await;
+    let applicant = seed_user(&db, "race-applicant@example.com").await;
+
+    seed_membership(&db, org, owner, "owner", "active").await;
+
+    let owner_token = login(&db, "race-owner@example.com").await;
+    let applicant_token = login(&db, "race-applicant@example.com").await;
+
+    let (created, request) = post(
+        &db,
+        &applicant_token,
+        &format!("/api/organizations/{org}/join-requests"),
+    )
+    .await;
+
+    assert_eq!(created, StatusCode::CREATED);
+    let request_id = request["id"].as_i64().unwrap();
+
+    let approve_uri = format!("/api/organizations/{org}/join-requests/{request_id}/approve");
+    let reject_uri = format!("/api/organizations/{org}/join-requests/{request_id}/reject");
+
+    let (approve, reject) = tokio::join!(
+        post(&db, &owner_token, &approve_uri),
+        post(&db, &owner_token, &reject_uri)
+    );
+
+    let statuses = [approve.0, reject.0];
+
+    assert_eq!(
+        statuses.iter().filter(|s| **s == StatusCode::OK).count(),
+        1,
+        "Exactly one decision must succeed: {statuses:?}"
+    );
+    assert_eq!(
+        statuses
+            .iter()
+            .filter(|s| **s == StatusCode::CONFLICT)
+            .count(),
+        1,
+        "The competing decision must return 409: {statuses:?}"
+    );
+
+    let request_status: String =
+        sqlx::query_scalar("SELECT status FROM organization_join_requests WHERE id = $1")
+            .bind(request_id)
+            .fetch_one(db.pool.as_ref())
+            .await
+            .unwrap();
+
+    let member_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM organization_members WHERE organization_id = $1 AND user_id = $2",
+    )
+    .bind(org)
+    .bind(applicant)
+    .fetch_one(db.pool.as_ref())
+    .await
+    .unwrap();
+
+    match request_status.as_str() {
+        "approved" => assert_eq!(member_count, 1),
+        "rejected" => assert_eq!(member_count, 0),
+        other => panic!("Unexpected final request status: {other}"),
+    }
+}
