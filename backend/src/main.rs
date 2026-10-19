@@ -19,15 +19,22 @@ async fn main() -> std::io::Result<()> {
     dotenv::dotenv().ok();
     // Initialize DB pool
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set in .env");
-    println!("DATABASE_URL={}", database_url);
+    // println!("DATABASE_URL={}", database_url);
+
     println!("CWD={:?}", std::env::current_dir().unwrap());
     let db = Db::new(&database_url)
         .await
         .expect("Failed to connect to DB");
+    sqlx::migrate!("./migrations")
+        .run(db.pool.as_ref())
+        .await
+        .expect("Database migrations failed");
 
     // Seed demo data if needed
-    if let Err(e) = seed_demo::seed_demo_data(&db).await {
-        eprintln!("Failed to seed demo data: {}", e);
+    if std::env::var("SEED_DEMO_DATA").as_deref() == Ok("true") {
+        if let Err(e) = seed_demo::seed_demo_data(&db).await {
+            eprintln!("Failed to seed demo data: {}", e);
+        }
     }
 
     println!("Server running at http://127.0.0.1:8000");

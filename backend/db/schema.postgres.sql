@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS organizations (
     slug TEXT UNIQUE,
 
     created_by_user_id BIGINT REFERENCES users(id),
+    visibility TEXT NOT NULL DEFAULT 'private'
+        CHECK (visibility IN ('public', 'private')),
 
     created_at TEXT,
     updated_at TEXT
@@ -170,6 +172,41 @@ CREATE TABLE IF NOT EXISTS organization_invitations (
 
     UNIQUE(organization_id, email, status)
 );
+
+-- ORGANIZATION JOIN REQUESTS
+
+CREATE TABLE IF NOT EXISTS organization_join_requests (
+    id BIGSERIAL PRIMARY KEY,
+    organization_id BIGINT NOT NULL REFERENCES organizations(id),
+    user_id BIGINT NOT NULL REFERENCES users(id),
+    requested_role TEXT NOT NULL DEFAULT 'member',
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN (
+            'pending', 'approved', 'rejected', 'cancelled'
+        )),
+    reviewed_by_user_id BIGINT REFERENCES users(id),
+    reviewed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS
+    idx_organization_join_requests_one_pending
+    ON organization_join_requests (organization_id, user_id)
+    WHERE status = 'pending';
+
+CREATE INDEX IF NOT EXISTS
+    idx_organization_join_requests_org_status
+    ON organization_join_requests (organization_id, status);
+
+CREATE INDEX IF NOT EXISTS
+    idx_organization_join_requests_user
+    ON organization_join_requests (user_id);
+
+CREATE INDEX IF NOT EXISTS idx_organizations_public
+    ON organizations (name, id)
+    WHERE visibility = 'public';
+    
 
 -- PASSWORD RESET TOKENS
 
@@ -600,3 +637,4 @@ CREATE TABLE IF NOT EXISTS organization_subscriptions (
 
     FOREIGN KEY (organization_id) REFERENCES organizations(id)
 );
+

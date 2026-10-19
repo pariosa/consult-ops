@@ -10,42 +10,87 @@ pub struct EmailMessage {
     pub body: String,
 }
 
+use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
+
 pub struct EmailNotificationService;
 
 impl EmailNotificationService {
     pub async fn send(message: EmailMessage) -> Result<(), String> {
         let mode = std::env::var("EMAIL_MODE").unwrap_or_else(|_| "dev".to_string());
 
-        if mode == "dev" {
-            println!("\n========== DEV EMAIL ==========");
-            println!("TO: {}", message.to);
-            println!("SUBJECT: {}", message.subject);
-            println!("BODY:\n{}", message.body);
-            println!("===============================\n");
-            return Ok(());
+        match mode.as_str() {
+            "dev" => {
+                println!("\n========== DEV EMAIL ==========");
+                println!("TO: {}", message.to);
+                println!("SUBJECT: {}", message.subject);
+                println!("BODY:\n{}", message.body);
+                println!("===============================\n");
+                Ok(())
+            }
+
+            "mailpit" => {
+                let host = std::env::var("SMTP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+
+                let port: u16 = std::env::var("SMTP_PORT")
+                    .unwrap_or_else(|_| "1025".to_string())
+                    .parse()
+                    .map_err(|e| format!("Invalid SMTP_PORT: {e}"))?;
+
+                let from = std::env::var("EMAIL_FROM")
+                    .unwrap_or_else(|_| "Consult Ops <test@consultops.test>".to_string());
+
+                let email = Message::builder()
+                    .from(from.parse().map_err(|e| format!("Invalid sender: {e}"))?)
+                    .to(message
+                        .to
+                        .parse()
+                        .map_err(|e| format!("Invalid recipient: {e}"))?)
+                    .subject(&message.subject)
+                    .body(message.body)
+                    .map_err(|e| e.to_string())?;
+
+                let mailer = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&host)
+                    .port(port)
+                    .build();
+
+                mailer
+                    .send(email)
+                    .await
+                    .map_err(|e| format!("Mailpit SMTP error: {e}"))?;
+
+                Ok(())
+            }
+
+            "resend" => {
+                let from = std::env::var("EMAIL_FROM")
+                    .unwrap_or_else(|_| "Consult Ops <onboarding@resend.dev>".to_string());
+
+                let resend = Resend::default();
+
+                let html = format!(
+                    "<div style=\"font-family: sans-serif; line-height: 1.5;\">{}</div>",
+                    message.body.replace('\n', "<br>")
+                );
+
+                let email =
+                    CreateEmailBaseOptions::new(from, [message.to.as_str()], message.subject)
+                        .with_text(&message.body)
+                        .with_html(&html);
+
+                resend
+                    .emails
+                    .send(email)
+                    .await
+                    .map_err(|err| err.to_string())?;
+
+                Ok(())
+            }
+
+            other => Err(format!(
+                "Unsupported EMAIL_MODE: {other}. \
+             Expected dev, mailpit, or resend."
+            )),
         }
-
-        let from = std::env::var("EMAIL_FROM")
-            .unwrap_or_else(|_| "Consult Ops <onboarding@resend.dev>".to_string());
-
-        let resend = Resend::default();
-
-        let html = format!(
-            "<div style=\"font-family: sans-serif; line-height: 1.5;\">{}</div>",
-            message.body.replace('\n', "<br>")
-        );
-
-        let email = CreateEmailBaseOptions::new(from, [message.to.as_str()], message.subject)
-            .with_text(&message.body)
-            .with_html(&html);
-
-        resend
-            .emails
-            .send(email)
-            .await
-            .map_err(|err| err.to_string())?;
-
-        Ok(())
     }
 
     pub async fn email_verification(to: String, verification_url: String) -> Result<(), String> {

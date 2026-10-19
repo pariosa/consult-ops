@@ -54,3 +54,11 @@ Thumbs.db
 *.pem
 *.key
 *storybook.log
+
+# ========================
+# Backups
+# ========================
+/backups/
+/backend/target/
+/frontend/test-results/
+/frontend/.env.stg

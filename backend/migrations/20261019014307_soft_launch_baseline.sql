@@ -1,0 +1,3 @@
+-- Add migration script here
+-- Baseline: schema.postgres.sql plus organization onboarding upgrade 001.
+-- Existing databases are upgraded separately before applying this marker.
