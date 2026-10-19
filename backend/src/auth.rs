@@ -364,12 +364,12 @@ pub async fn login(db: web::Data<Db>, info: web::Json<AuthInfo>) -> impl Respond
         .execute(&*db.pool)
         .await;
 
-        println!("LOGIN ATTEMPT {}", info.email);
-        println!("PASSWORD HASH {}", user.password_hash);
+        //println!("LOGIN ATTEMPT {}", info.email);
+        //println!("PASSWORD HASH {}", user.password_hash);
 
         let verify_result = verify_password(&info.password, &user.password_hash);
 
-        println!("VERIFY RESULT {}", verify_result);
+        //println!("VERIFY RESULT {}", verify_result);
 
         if let Err(e) = session_result {
             return HttpResponse::InternalServerError().body(e.to_string());

@@ -7,8 +7,7 @@ pub async fn setup_test_db() -> Db {
     dotenv::dotenv().ok();
 
     let database_url = std::env::var("TEST_DATABASE_URL")
-        .or_else(|_| std::env::var("DATABASE_URL"))
-        .expect("TEST_DATABASE_URL or DATABASE_URL must be set");
+        .expect("TEST_DATABASE_URL must point to a disposable test database");
 
     let pool = PgPoolOptions::new()
         .max_connections(5)

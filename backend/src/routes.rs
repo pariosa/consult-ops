@@ -4,37 +4,39 @@ use crate::auth::{
 };
 use crate::handlers::{
     accept_organization_invitation, activate_engagement, approve_engagement_milestone,
-    assign_platform_user_to_organization, attach_checkout_session, cancel_engagement,
-    cancel_subscription_dev, cancel_transaction, complete_engagement, create_activation_checkout,
-    create_activation_fee, create_agreement_payout_rule, create_client, create_contract,
-    create_engagement_billing, create_engagement_milestone, create_for_project, create_invoice,
-    create_my_organization, create_organization_agreement, create_organization_client,
-    create_organization_member, create_organization_party, create_organization_project,
-    create_party_from_client, create_party_from_user, create_payment, create_payout_rule,
-    create_platform_organization, create_platform_user, create_project, create_user,
-    delete_organization_member, disable_user, dispute_engagement, enable_user,
-    engagement_transaction_readiness, force_password_reset, generate_for_engagement,
-    get_admin_summary, get_client_portal_summary, get_clients, get_contracts, get_invoices, get_me,
-    get_my_organization, get_organization, get_organization_clients, get_organization_contracts,
-    get_organization_finance_summary, get_organization_invoices, get_organization_members,
-    get_organization_party_balances, get_organization_payments, get_organization_projects,
-    get_organization_subscription, get_party_payment_readiness, get_payments,
-    get_platform_activity, get_platform_alerts, get_platform_dashboard, get_platform_funnel,
-    get_platform_overview, get_project_by_id, get_project_portal_summary, get_projects,
-    get_user_by_id, get_user_memberships, get_users, invite_organization_member,
-    list_agreement_payout_rules, list_engagement_billing, list_engagement_events,
-    list_engagement_milestones, list_engagement_transactions, list_for_project,
-    list_my_notifications, list_my_organizations, list_organization_agreements,
-    list_organization_events, list_organization_invitations, list_organization_members,
-    list_organization_parties, list_organization_transactions, list_payout_rules,
-    list_platform_organization_members, list_platform_organizations, list_platform_users,
-    lock_agreement, mark_all_notifications_read, mark_billing_paid, mark_contract_sent,
-    mark_engagement_milestone_paid, mark_notification_read, mark_party_payer_authorized_dev,
-    mark_party_payout_ready_dev, mark_signed, mark_subscription_active_dev,
-    mark_transaction_failed, mark_transaction_paid, mark_transaction_processing, platform_search,
-    reopen_engagement_milestone, resend_contract, revoke_user_sessions, set_current_organization,
-    show, stripe_webhook, submit_engagement_milestone, update_contract_recipient,
-    update_engagement_milestone, update_organization, update_organization_member, update_user_type,
+    approve_organization_join_request, assign_platform_user_to_organization,
+    attach_checkout_session, cancel_engagement, cancel_subscription_dev, cancel_transaction,
+    complete_engagement, create_activation_checkout, create_activation_fee,
+    create_agreement_payout_rule, create_client, create_contract, create_engagement_billing,
+    create_engagement_milestone, create_for_project, create_invoice, create_my_organization,
+    create_organization_agreement, create_organization_client, create_organization_member,
+    create_organization_party, create_organization_project, create_party_from_client,
+    create_party_from_user, create_payment, create_payout_rule, create_platform_organization,
+    create_platform_user, create_project, create_user, delete_organization_member, disable_user,
+    discover_organizations, dispute_engagement, enable_user, engagement_transaction_readiness,
+    force_password_reset, generate_for_engagement, get_admin_summary, get_client_portal_summary,
+    get_clients, get_contracts, get_invoices, get_me, get_my_organization, get_organization,
+    get_organization_clients, get_organization_contracts, get_organization_finance_summary,
+    get_organization_invoices, get_organization_members, get_organization_party_balances,
+    get_organization_payments, get_organization_projects, get_organization_subscription,
+    get_party_payment_readiness, get_payments, get_platform_activity, get_platform_alerts,
+    get_platform_dashboard, get_platform_funnel, get_platform_overview, get_project_by_id,
+    get_project_portal_summary, get_projects, get_user_by_id, get_user_memberships, get_users,
+    invite_organization_member, list_agreement_payout_rules, list_engagement_billing,
+    list_engagement_events, list_engagement_milestones, list_engagement_transactions,
+    list_for_project, list_my_join_requests, list_my_notifications, list_my_organizations,
+    list_organization_agreements, list_organization_events, list_organization_invitations,
+    list_organization_join_requests, list_organization_members, list_organization_parties,
+    list_organization_transactions, list_payout_rules, list_platform_organization_members,
+    list_platform_organizations, list_platform_users, lock_agreement, mark_all_notifications_read,
+    mark_billing_paid, mark_contract_sent, mark_engagement_milestone_paid, mark_notification_read,
+    mark_party_payer_authorized_dev, mark_party_payout_ready_dev, mark_signed,
+    mark_subscription_active_dev, mark_transaction_failed, mark_transaction_paid,
+    mark_transaction_processing, platform_search, reject_organization_join_request,
+    reopen_engagement_milestone, request_to_join_organization, resend_contract,
+    revoke_user_sessions, set_current_organization, show, stripe_webhook,
+    submit_engagement_milestone, update_contract_recipient, update_engagement_milestone,
+    update_organization, update_organization_member, update_user_type,
     upsert_organization_subscription, upsert_party_payment_profile, verify_party,
 };
 use actix_web::web;
@@ -96,6 +98,10 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("/admin/users/{id}/type", web::patch().to(update_user_type))
             .route("/admin/summary", web::get().to(get_admin_summary))
             // Organizations
+            .route(
+                "/organizations/discover",
+                web::get().to(discover_organizations),
+            )
             .route("/organizations/{id}", web::get().to(get_organization))
             .route("/organizations/{id}", web::patch().to(update_organization))
             .route(
@@ -148,6 +154,24 @@ pub fn config(cfg: &mut web::ServiceConfig) {
                 "/organizations/{id}/subscription/cancel/dev",
                 web::post().to(cancel_subscription_dev),
             )
+            //onboarding organizations
+            .route(
+                "/organizations/{id}/join-requests",
+                web::post().to(request_to_join_organization),
+            )
+            .route(
+                "/organizations/{id}/join-requests",
+                web::get().to(list_organization_join_requests),
+            )
+            .route(
+                "/organizations/{id}/join-requests/{request_id}/approve",
+                web::post().to(approve_organization_join_request),
+            )
+            .route(
+                "/organizations/{id}/join-requests/{request_id}/reject",
+                web::post().to(reject_organization_join_request),
+            )
+            .route("/me/join-requests", web::get().to(list_my_join_requests))
             // Portal summaries
             .route(
                 "/client-portal/summary",

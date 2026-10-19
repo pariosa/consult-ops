@@ -34,8 +34,11 @@ pub use platform_admin::{
 };
 
 pub use agreement_payout_rule::{create_payout_rule, list_payout_rules};
+
 pub use onboarding_handler::{
-    create_my_organization, list_my_organizations, set_current_organization,
+    approve_organization_join_request, create_my_organization, discover_organizations,
+    list_my_join_requests, list_my_organizations, list_organization_join_requests,
+    reject_organization_join_request, request_to_join_organization, set_current_organization,
 };
 
 pub use client::{create_client, get_clients};
