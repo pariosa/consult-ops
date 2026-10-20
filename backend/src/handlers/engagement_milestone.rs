@@ -367,9 +367,9 @@ pub async fn approve_engagement_milestone(
         }
     };
 
-    if status != "activated" {
+    if status != "active" {
         return HttpResponse::Conflict().json(serde_json::json!({
-            "error": "Engagement must be activated before milestones can be approved."
+            "error": "Engagement must be active before milestones can be approved."
         }));
     }
 

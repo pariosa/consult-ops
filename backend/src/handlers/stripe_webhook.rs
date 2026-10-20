@@ -147,13 +147,6 @@ pub async fn stripe_webhook(
                 return HttpResponse::InternalServerError()
                     .body("Failed to update engagement platform fee status");
             }
-            let _ = maybe_activate_engagement(
-                db.get_ref(),
-                billing.engagement_id,
-                billing.organization_id,
-                None,
-            )
-            .await;
 
             if let Err(err) = activate_engagement_from_payment(
                 &db,
@@ -163,6 +156,10 @@ pub async fn stripe_webhook(
             .await
             {
                 eprintln!("activate_engagement_from_payment webhook error: {:?}", err);
+
+                return HttpResponse::InternalServerError().json(serde_json::json!({
+                    "error": "Failed to process engagement activation."
+                }));
             }
 
             HttpResponse::Ok().json(serde_json::json!({

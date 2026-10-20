@@ -537,8 +537,21 @@ CREATE TABLE IF NOT EXISTS operational_transactions (
 
     trigger_event TEXT,
 
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    settlement_source TEXT,
+    settlement_reference TEXT,
+    settled_at TIMESTAMPTZ,
+
+    CONSTRAINT operational_transactions_settlement_source_check
+        CHECK (
+            settlement_source IS NULL
+            OR settlement_source IN (
+                'dev_simulation',
+                'manual',
+                'provider'
+            )
+        )
+    );
 
 -- NOTIFICATIONS
 

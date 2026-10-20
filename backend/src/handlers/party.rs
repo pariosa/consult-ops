@@ -1,6 +1,5 @@
 use actix_web::{HttpResponse, Responder, ResponseError, web};
 
-use crate::auth::permissions::can_manage_agreements;
 use crate::auth_context::AuthUser;
 use crate::db::Db;
 use crate::models::party::{CreateParty, Party};
@@ -28,12 +27,6 @@ pub async fn list_organization_parties(
 ) -> impl Responder {
     let organization_id = path.into_inner();
 
-    if !can_manage_agreements(&auth.user_type) {
-        return HttpResponse::Forbidden().json(serde_json::json!({
-            "error": "You do not have permission to view parties."
-        }));
-    }
-
     if let Err(err) = require_org_member(db.pool.as_ref(), auth.id, organization_id).await {
         return err.error_response();
     }
@@ -54,12 +47,6 @@ pub async fn create_organization_party(
     payload: web::Json<CreateParty>,
 ) -> impl Responder {
     let organization_id = path.into_inner();
-
-    if !can_manage_agreements(&auth.user_type) {
-        return HttpResponse::Forbidden().json(serde_json::json!({
-            "error": "You do not have permission to create parties."
-        }));
-    }
 
     if let Err(err) = require_org_role(
         db.pool.as_ref(),
@@ -108,12 +95,6 @@ pub async fn create_party_from_client(
 ) -> impl Responder {
     let (organization_id, client_id) = path.into_inner();
 
-    if !can_manage_agreements(&auth.user_type) {
-        return HttpResponse::Forbidden().json(serde_json::json!({
-            "error": "You do not have permission to create verified client parties."
-        }));
-    }
-
     if let Err(err) = require_org_role(
         db.pool.as_ref(),
         auth.id,
@@ -161,12 +142,6 @@ pub async fn create_party_from_user(
     path: web::Path<(i64, i64)>,
 ) -> impl Responder {
     let (organization_id, user_id) = path.into_inner();
-
-    if !can_manage_agreements(&auth.user_type) {
-        return HttpResponse::Forbidden().json(serde_json::json!({
-            "error": "You do not have permission to create verified user parties."
-        }));
-    }
 
     if let Err(err) = require_org_role(
         db.pool.as_ref(),
@@ -225,12 +200,6 @@ pub async fn get_party_payment_readiness(
 ) -> impl Responder {
     let party_id = path.into_inner();
 
-    if !can_manage_agreements(&auth.user_type) {
-        return HttpResponse::Forbidden().json(serde_json::json!({
-            "error": "You do not have permission to view party payment readiness."
-        }));
-    }
-
     let organization_id = match organization_id_for_party(&db, party_id).await {
         Ok(id) => id,
         Err(_) => return HttpResponse::NotFound().body("Party not found"),
@@ -274,12 +243,6 @@ pub async fn upsert_party_payment_profile(
     let party_id = path.into_inner();
     let input = payload.into_inner();
 
-    if !can_manage_agreements(&auth.user_type) {
-        return HttpResponse::Forbidden().json(serde_json::json!({
-            "error": "You do not have permission to update party payment profiles."
-        }));
-    }
-
     let organization_id = match organization_id_for_party(&db, party_id).await {
         Ok(id) => id,
         Err(_) => return HttpResponse::NotFound().body("Party not found"),
@@ -316,12 +279,6 @@ pub async fn verify_party(
     path: web::Path<i64>,
 ) -> impl Responder {
     let party_id = path.into_inner();
-
-    if !can_manage_agreements(&auth.user_type) {
-        return HttpResponse::Forbidden().json(serde_json::json!({
-            "error": "You do not have permission to verify parties."
-        }));
-    }
 
     let organization_id = match organization_id_for_party(&db, party_id).await {
         Ok(id) => id,
@@ -370,12 +327,6 @@ pub async fn mark_party_payout_ready_dev(
 ) -> impl Responder {
     let party_id = path.into_inner();
 
-    if !can_manage_agreements(&auth.user_type) {
-        return HttpResponse::Forbidden().json(serde_json::json!({
-            "error": "You do not have permission to mark payout readiness."
-        }));
-    }
-
     let organization_id = match organization_id_for_party(&db, party_id).await {
         Ok(id) => id,
         Err(_) => return HttpResponse::NotFound().body("Party not found"),
@@ -410,12 +361,6 @@ pub async fn mark_party_payer_authorized_dev(
     path: web::Path<i64>,
 ) -> impl Responder {
     let party_id = path.into_inner();
-
-    if !can_manage_agreements(&auth.user_type) {
-        return HttpResponse::Forbidden().json(serde_json::json!({
-            "error": "You do not have permission to authorize payer profile."
-        }));
-    }
 
     let organization_id = match organization_id_for_party(&db, party_id).await {
         Ok(id) => id,

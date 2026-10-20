@@ -16,6 +16,9 @@ pub struct OperationalTransaction {
     pub status: String,
     pub trigger_event: Option<String>,
     pub created_at: String,
+    pub settlement_source: Option<String>,
+    pub settlement_reference: Option<String>,
+    pub settled_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -158,17 +161,27 @@ impl OperationalTransaction {
         .await
     }
 
-    pub async fn update_status(db: &PgPool, id: i64, status: &str) -> SqlxResult<Self> {
+    pub async fn update_status(db: &PgPool, id: i64, next_status: &str) -> SqlxResult<Self> {
         sqlx::query_as::<_, OperationalTransaction>(
             r#"
-            UPDATE operational_transactions
-            SET status = $1
-            WHERE id = $2
-            RETURNING *
-            "#,
+        UPDATE operational_transactions
+        SET status = $2
+        WHERE id = $1
+          AND (
+              (status = 'pending'
+                  AND $2 IN ('processing', 'cancelled'))
+              OR
+              (status = 'processing'
+                  AND $2 IN ('paid', 'failed'))
+              OR
+              (status = 'failed'
+                  AND $2 = 'processing')
+          )
+        RETURNING *
+        "#,
         )
-        .bind(status)
         .bind(id)
+        .bind(next_status)
         .fetch_one(db)
         .await
     }
