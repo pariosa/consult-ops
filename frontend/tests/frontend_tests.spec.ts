@@ -25,6 +25,13 @@ vi.mock('#imports', () => ({
 vi.stubGlobal('useRouter', () => ({
   push: vi.fn(),
 }));
+
+vi.stubGlobal('useRuntimeConfig', () => ({
+  public: {
+    apiBase: 'http://127.0.0.1:8000',
+  },
+}));
+
 describe('LoginForm', () => {
   beforeEach(() => {
     vi.clearAllMocks();
