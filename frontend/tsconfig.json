@@ -1,13 +1,17 @@
 {
-  "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "Node",
-    "strict": true,
-    "jsx": "preserve",
-    "esModuleInterop": true,
-    "types": ["@types/node"]
-  },
   "extends": "./.nuxt/tsconfig.json",
-  "exclude": ["node_modules", ".nuxt", "dist"]
+  "compilerOptions": {
+    "strict": true
+  },
+  "exclude": [
+    "dist",
+    ".data",
+    "node_modules/runtime/server",
+    "node_modules/dist/runtime/server",
+    "node_modules/nuxt/node_modules/runtime/server",
+    "node_modules/nuxt/node_modules/dist/runtime/server",
+    ".output",
+    "**/*.stories.ts",
+    "**/*.stories.tsx"
+  ]
 }

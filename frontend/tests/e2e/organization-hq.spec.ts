@@ -39,8 +39,9 @@ test('admin sees role-aware organization workspace navigation', async ({
     page.getByRole('link', { name: 'Projects', exact: true }).first(),
   ).toBeVisible();
 
+
   await expect(
-    page.getByRole('link', { name: 'Clients', exact: true }).first(),
+    page.locator('a[href="/organization/clients"]')
   ).toBeVisible();
 
   await expect(
@@ -81,6 +82,14 @@ test('contractor sees limited organization workspace navigation', async ({
     page.getByRole('heading', { name: /organization hq/i }),
   ).toBeVisible();
 
+  await expect(
+    page.locator('a[href="/organization/finance"]')
+  ).toHaveCount(0);
+
+  await expect(
+    page.locator('a[href="/organization/invitations"]')
+  ).toHaveCount(0);
+
   await expect(page.getByText('Atlas Operations')).toBeVisible();
 
   await expect(
@@ -88,7 +97,7 @@ test('contractor sees limited organization workspace navigation', async ({
   ).toBeVisible();
 
   await expect(
-    page.getByRole('link', { name: 'Clients', exact: true }).first(),
+    page.locator('a[href="/organization/clients"]')
   ).toBeVisible();
 
   await expect(

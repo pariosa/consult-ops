@@ -1,6 +1,10 @@
+
 import type { StorybookConfig } from '@storybook/vue3-vite';
 import vue from '@vitejs/plugin-vue';
 import { mergeConfig } from 'vite';
+import { fileURLToPath, URL } from 'node:url';
+
+const frontendRoot = fileURLToPath(new URL('../', import.meta.url));
 
 const config: StorybookConfig = {
   stories: ['../components/**/*.stories.@(js|ts|vue)'],
@@ -15,7 +19,7 @@ const config: StorybookConfig = {
   },
   async viteFinal(config) {
     return mergeConfig(config, {
-      plugins: [vue()], // This fixes the "invalid JS syntax" error for .vue files
+      plugins: [vue()],
       esbuild: {
         tsconfigRaw: {
           compilerOptions: {
@@ -26,8 +30,8 @@ const config: StorybookConfig = {
       },
       resolve: {
         alias: {
-          '~': '/Users/w0xy/code/consult-ops/frontend',
-          '@': '/Users/w0xy/code/consult-ops/frontend',
+          '~': frontendRoot,
+          '@': frontendRoot,
         },
       },
     });
