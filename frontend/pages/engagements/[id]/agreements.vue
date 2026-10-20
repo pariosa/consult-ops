@@ -196,21 +196,34 @@ async function refresh() {
 
   try {
     engagement.value = await api.get(`/api/engagements/${engagementId}`);
-    organizationId.value = engagement.value.organization_id;
+    
+    const orgId = engagement.value.organization_id;
 
-    parties.value = await api.get(
-      `/api/organizations/${organizationId.value}/parties`,
+    if (typeof orgId !== 'number' || !Number.isFinite(orgId)) {
+      throw new Error('Engagement has no valid organization ID.');
+    }
+
+    organizationId.value = orgId;
+
+    parties.value = await api.get<any[]>(
+      `/api/organizations/${orgId}/parties`,
     );
 
-    agreements.value = await listOrganizationAgreements(organizationId.value);
+    agreements.value = await listOrganizationAgreements(orgId);
+    if (organizationId.value == null) {
+      throw new Error('Engagement has no associated organization.');
+    }
 
     const engagementAgreements = agreements.value.filter(
       (agreement: any) => agreement.engagement_id === engagementId,
     );
 
     if (engagementAgreements.length) {
-      selectedAgreementId.value = engagementAgreements[0].id;
-      payoutRules.value = await listPayoutRules(selectedAgreementId.value);
+      const agreementId: number = engagementAgreements[0].id;
+
+      selectedAgreementId.value = agreementId;
+      payoutRules.value = await listPayoutRules(agreementId);
+
       hydrateSelectedPartiesFromExistingRules();
     } else {
       selectedAgreementId.value = null;

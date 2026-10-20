@@ -2,6 +2,11 @@
 import { computed, onMounted, ref } from 'vue';
 import { useApi } from '~/composables/useApi';
 import { useOperationalFinance } from '~/composables/useOperationalFinance';
+import type {
+  FinanceSummary,
+  PartyBalance,
+} from '~/composables/useOperationalFinance';
+
 
 const api = useApi();
 const { getFinanceSummary, getPartyBalances } = useOperationalFinance();
@@ -9,8 +14,8 @@ const { getFinanceSummary, getPartyBalances } = useOperationalFinance();
 const loading = ref(true);
 const error = ref('');
 const organization = ref<any>(null);
-const summary = ref<any>(null);
-const balances = ref<any[]>([]);
+const summary = ref<FinanceSummary | null>(null);
+const balances = ref<PartyBalance[]>([]);
 
 function money(cents: number) {
   return `$${((cents || 0) / 100).toFixed(2)}`;
@@ -52,8 +57,8 @@ onMounted(refresh);
 
     <section v-else-if="error" class="form-error">{{ error }}</section>
 
-    <template v-else>
-      <section class="finance-grid">
+    <template v-else-if="summary">
+      <section class="finance-grid"> 
         <div class="finance-card">
           <p>Outstanding</p>
           <strong>{{ money(outstandingCents) }}</strong>

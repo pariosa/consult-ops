@@ -73,6 +73,13 @@ const cards = computed(() =>
       to: '/engagements',
       show: canProcessTransactions.value || canManageAgreements.value,
     },
+    {
+      title: 'Discover Organizations',
+      description:
+        'Browse public workspaces and request to join an organization.',
+      to: '/organization/discover',
+      show: true,
+    },
   ].filter((card) => card.show),
 );
 

@@ -198,7 +198,10 @@ async function loadDashboard() {
   error.value = '';
 
   try {
-    const data = await api.get('/api/platform/dashboard');
+    const data = await api.get<Record<string, unknown>>(
+      '/api/platform/dashboard',
+    );
+
     dashboard.value = {
       ...dashboard.value,
       ...data,

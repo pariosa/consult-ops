@@ -63,7 +63,7 @@ async function markContractSigned() {
 
   try {
     await post(`/api/engagements/${engagementId}/mark-signed`, {});
-    await load();
+    await refresh();
   } catch (err: any) {
     error.value =
       err?.data?.error || err?.message || 'Failed to mark contract signed.';

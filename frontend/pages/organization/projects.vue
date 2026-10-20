@@ -4,6 +4,14 @@ import { useAsyncData } from 'nuxt/app';
 import { useApi } from '~/composables/useApi';
 import { useOrganizationStore } from '~/stores/organization';
 
+
+interface OrganizationProject {
+  id: number;
+  name: string;
+  description?: string | null;
+  status?: string;
+}
+
 definePageMeta({
   middleware: ['role'],
   roles: ['admin', 'consultant'],
@@ -21,7 +29,7 @@ const {
 
   if (!orgStore.organizationId) return [];
 
-  return await apiFetch(
+  return apiFetch<OrganizationProject[]>(
     `/api/organizations/${orgStore.organizationId}/projects`,
   );
 });

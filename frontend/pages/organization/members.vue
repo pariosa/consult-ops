@@ -18,7 +18,7 @@ async function refresh() {
 
   try {
     organization.value = await api.get('/api/me/organization');
-    members.value = await getMembers(organization.value.id);
+    members.value = await getMembers(organization.value.id) as any[];
   } catch (err: any) {
     error.value = err?.message || 'Failed to load organization members.';
   } finally {

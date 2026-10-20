@@ -1,14 +1,31 @@
 import { useApi } from './useApi';
 
+export interface OperationalTransaction {
+  id: number;
+  organization_id?: number | null;
+  engagement_id?: number | null;
+  status: string;
+  amount_cents?: number | null;
+  created_at?: string;
+}
+
 export function useOperationalTransactions() {
   const api = useApi();
 
-  async function getOrganizationTransactions(organizationId: number) {
-    return await api.get(`/api/organizations/${organizationId}/transactions`);
+  async function getOrganizationTransactions(
+    organizationId: number,
+  ): Promise<OperationalTransaction[]> {
+    return api.get<OperationalTransaction[]>(
+      `/api/organizations/${organizationId}/transactions`,
+    );
   }
 
-  async function getEngagementTransactions(engagementId: number) {
-    return await api.get(`/api/engagements/${engagementId}/transactions`);
+  async function getEngagementTransactions(
+    engagementId: number,
+  ): Promise<OperationalTransaction[]> {
+    return api.get<OperationalTransaction[]>(
+      `/api/engagements/${engagementId}/transactions`,
+    );
   }
 
   async function markProcessing(id: number) {

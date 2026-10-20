@@ -26,8 +26,12 @@ const unreadCount = computed(
   () => notifications.value.filter((item) => !item.read_at).length,
 );
 
-function authHeaders() {
-  if (!process.client) return {};
+function authHeaders(): HeadersInit {
+  const headers = new Headers();
+
+  if (!import.meta.client) {
+    return headers;
+  }
 
   const rawUser = localStorage.getItem('auth_user');
   const parsedUser = rawUser ? JSON.parse(rawUser) : null;
@@ -37,11 +41,11 @@ function authHeaders() {
     parsedUser?.token ||
     localStorage.getItem('token');
 
-  return token
-    ? {
-        Authorization: `Bearer ${token}`,
-      }
-    : {};
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  return headers;
 }
 
 async function loadNotifications() {

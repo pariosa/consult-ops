@@ -59,7 +59,10 @@ onMounted(fetchUser);
 </script>
 
 <template>
-  <DashboardShell>
+  <DashboardShell
+    title="Admin - User Profile"
+    subtitle="Review account details and manage user access."
+  >
     <NuxtLink class="back-link" to="/admin/users">← Back to users</NuxtLink>
 
     <section v-if="user" class="panel">

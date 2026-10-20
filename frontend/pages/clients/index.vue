@@ -3,6 +3,13 @@
 import { useApi } from '~/composables/useApi';
 import { useOrganizationStore } from '~/stores/organization';
 
+interface Client {
+  id: number;
+  name: string;
+  email: string | null;
+}
+
+
 definePageMeta({
   middleware: ['role'],
   roles: ['admin', 'consultant'],
@@ -20,7 +27,7 @@ const {
 
   if (!orgStore.organizationId) return [];
 
-  return await apiFetch(
+  return apiFetch<Client[]>(
     `/api/organizations/${orgStore.organizationId}/clients`,
   );
 });

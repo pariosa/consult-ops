@@ -1,13 +1,14 @@
 // frontend/composables/useApi.ts
 
 export const useApi = () => {
+  const config = useRuntimeConfig();
   const apiFetch = async <T>(path: string, options: any = {}) => {
     const authUser = process.client
       ? JSON.parse(localStorage.getItem('auth_user') || 'null')
       : null;
 
     return await $fetch<T>(path, {
-      baseURL: 'http://127.0.0.1:8000',
+      baseURL: config.public.apiBase,
       ...options,
       headers: {
         ...(options.headers || {}),

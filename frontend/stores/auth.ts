@@ -15,16 +15,23 @@ interface AuthState {
 
 export const useAuthStore = defineStore('auth', {
   state: (): AuthState => ({
-    token: localStorage.getItem('token'),
+    token: import.meta.client ? localStorage.getItem('token') : null,
     user: null,
   }),
   actions: {
     async login(email: string, password: string) {
       try {
         const res = await axios.post('/api/auth/login', { email, password });
-        this.token = res.data.token;
-        this.user = res.data.user;
-        localStorage.setItem('token', this.token);
+        const token: string = res.data.token;
+        const user: User = res.data.user;
+
+        if (!token) {
+          throw new Error('Login response did not contain a token.');
+        }
+
+        this.token = token;
+        this.user = user;
+        localStorage.setItem('token', token);
         axios.defaults.headers.common['Authorization'] = `Bearer ${this.token}`;
         router.push('/admin');
       } catch (err) {

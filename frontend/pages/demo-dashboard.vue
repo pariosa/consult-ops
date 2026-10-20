@@ -27,17 +27,37 @@ import ProjectCard from '~/components/Project/ProjectCard.vue';
 import InvoiceCard from '~/components/Invoices/InvoiceCard.vue';
 import ContractCard from '~/components/Contracts/ContractCard.vue';
 import { useApi } from '~/composables/useApi';
+interface DemoProject {
+  id: number;
+  client_id: number;
+  name: string;
+  created_at: string;
+}
 
-const projects = ref([]);
-const invoices = ref([]);
-const contracts = ref([]);
+interface DemoContract {
+  id: number;
+  project_id: number;
+  title: string;
+  status: string;
+  created_at: string;
+}
+
+const projects = ref<DemoProject[]>([]);
+const contracts = ref<DemoContract[]>([]);
+const invoices = ref<Array<{ id: number } & Record<string, unknown>>>([]); 
 const config = useRuntimeConfig();
 const { apiFetch } = useApi();
 onMounted(async () => {
-  projects.value = await apiFetch(`${config.public.apiBase}/api/projects`);
-  invoices.value = await apiFetch(`${config.public.apiBase}/api/invoices`);
-  contracts.value = await apiFetch(`${config.public.apiBase}/api/contracts`);
-});
+  projects.value = await apiFetch<DemoProject[]>('/api/projects');
+
+  contracts.value = await apiFetch<DemoContract[]>('/api/contracts');
+
+  invoices.value = await apiFetch<
+    Array<{ id: number } & Record<string, unknown>>
+  >('/api/invoices');
+
+  }
+);
 </script>
 
 <style scoped>

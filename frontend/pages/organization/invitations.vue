@@ -25,7 +25,7 @@ async function refresh() {
 
   try {
     organization.value = await api.get('/api/me/organization');
-    invitations.value = await getInvitations(organization.value.id);
+    invitations.value = await getInvitations(organization.value.id) as any[];
   } catch (err: any) {
     error.value = err?.message || 'Failed to load invitations.';
   } finally {

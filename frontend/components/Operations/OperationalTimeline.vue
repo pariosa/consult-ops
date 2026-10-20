@@ -1,15 +1,26 @@
 <script setup lang="ts">
-const props = defineProps({
-  events: {
-    type: Array,
-    default: () => [],
+export interface OperationalEvent {
+  id: number;
+  event_type: string;
+  created_at: string;
+  actor_name?: string | null;
+  from_status?: string | null;
+  to_status?: string | null;
+  metadata?: Record<string, unknown> | string | null;
+}
+
+const props = withDefaults(
+  defineProps<{
+    events?: OperationalEvent[];
+    title?: string;
+  }>(),
+  {
+    events: () => [],
+    title: 'Operational Timeline',
   },
-  title: {
-    type: String,
-    default: 'Operational Timeline',
-  },
-});
-function eventMetadata(event: any) {
+);
+
+function eventMetadata(event: OperationalEvent): Record<string, unknown> {
   if (!event.metadata) return {};
 
   if (typeof event.metadata === 'object') {
@@ -17,16 +28,24 @@ function eventMetadata(event: any) {
   }
 
   try {
-    return JSON.parse(event.metadata);
+    const parsed: unknown = JSON.parse(event.metadata);
+
+    return parsed !== null &&
+      typeof parsed === 'object' &&
+      !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
   } catch {
     return {};
   }
 }
 
-function eventMessage(event: any) {
+function eventMessage(event: OperationalEvent): string {
   const metadata = eventMetadata(event);
 
-  if (metadata.message) return metadata.message;
+  if (typeof metadata.message === 'string' && metadata.message) {
+    return metadata.message;
+  }
 
   const label = formatEvent(event.event_type);
 
@@ -36,19 +55,26 @@ function eventMessage(event: any) {
 
   return `${label} was recorded.`;
 }
-function formatEvent(eventType: string) {
-  return eventType.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ');
+
+function formatEvent(eventType: string): string {
+  return eventType
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/_/g, ' ');
 }
 
-function eventGroup(eventType: string) {
+function eventGroup(eventType: string): string {
   const normalized = eventType.toLowerCase();
 
   if (normalized.includes('contract')) return 'contract';
+
   if (normalized.includes('payment') || normalized.includes('paid'))
     return 'payment';
+
   if (normalized.includes('milestone')) return 'milestone';
+
   if (normalized.includes('activated') || normalized.includes('resumed'))
     return 'success';
+
   if (
     normalized.includes('overdue') ||
     normalized.includes('suspended') ||

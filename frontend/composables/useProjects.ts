@@ -1,5 +1,14 @@
 import { useApi } from '../composables/useApi';
 
+
+export interface Project {
+  id: number;
+  organization_id?: number;
+  client_id: number;
+  name: string;
+  status?: string | null;
+}
+
 export const useProjects = () => {
   const { get, post } = useApi();
 
@@ -13,17 +22,22 @@ export const useProjects = () => {
     return get(`/api/projects`);
   };
 
-  // // CREATE project
-  // const createProject = (payload: any) => {
-  //   return post(`/api/projects`, payload);
-  // };
-
-  async function getOrganizationProjects(organizationId: number) {
-    return await get(`/api/organizations/${organizationId}/projects`);
+  async function getOrganizationProjects(
+    organizationId: number,
+  ): Promise<Project[]> {
+    return get<Project[]>(
+      `/api/organizations/${organizationId}/projects`,
+    );
   }
 
-  async function createProject(organizationId: number, payload: any) {
-    return await post(`/api/organizations/${organizationId}/projects`, payload);
+  async function createProject(
+    organizationId: number,
+    payload: any,
+  ): Promise<Project> {
+    return post<Project>(
+      `/api/organizations/${organizationId}/projects`,
+      payload,
+    );
   }
 
   return {

@@ -8,16 +8,24 @@ const usage = ref({
   limit: 10,
 });
 
+interface CheckoutResponse {
+  url: string;
+}
+
 async function startSubscription() {
   loading.value = true;
 
   try {
     // later: call backend stripe endpoint
-    const res = await $fetch(
+    const res = await $fetch<CheckoutResponse>(
       'http://127.0.0.1:8000/api/billing/create-checkout',
     );
 
     // redirect to Stripe
+    if (!res.url) {
+      throw new Error('Checkout URL was not returned.');
+    }
+
     window.location.href = res.url;
   } catch (err) {
     console.error(err);

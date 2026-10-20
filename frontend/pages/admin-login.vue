@@ -30,7 +30,9 @@ const resend = async () => {
     resendLoading.value = false;
   }
 };
-const login = async (payload) => {
+const login = async (
+  payload: Parameters<ReturnType<typeof useAuth>['login']>[0],
+) => {
   error.value = '';
 
   try {

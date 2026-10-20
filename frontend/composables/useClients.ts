@@ -1,16 +1,29 @@
 import { useApi } from '../composables/useApi';
 
+export interface Client {
+  id: number;
+  name: string;
+  email?: string | null;
+}
+
 export function useClients() {
   const { get, post } = useApi();
 
-  async function getOrganizationClients(organizationId: number) {
-    return await get(`/api/organizations/${organizationId}/clients`);
+  async function getOrganizationClients(
+    organizationId: number,
+  ): Promise<Client[]> {
+    return get<Client[]>(`/api/organizations/${organizationId}/clients`);
   }
 
-  async function createClient(organizationId: number, payload: any) {
-    return await post(`/api/organizations/${organizationId}/clients`, payload);
+  async function createClient(
+    organizationId: number,
+    payload: any,
+  ): Promise<Client> {
+    return post<Client>(
+      `/api/organizations/${organizationId}/clients`,
+      payload,
+    );
   }
-
   return {
     getOrganizationClients,
     createClient,

@@ -1,10 +1,19 @@
 import { useApi } from './useApi';
 
+export interface EngagementMilestone {
+  id: number;
+  engagement_id: number;
+  title: string;
+  status: string;
+}
+
 export function useEngagementMilestones() {
   const api = useApi();
 
   const getMilestones = (engagementId: number) =>
-    api.get(`/api/engagements/${engagementId}/milestones`);
+    api.get<EngagementMilestone[]>(
+      `/api/engagements/${engagementId}/milestones`,
+    );
 
   const createMilestone = (engagementId: number, payload: any) =>
     api.post(`/api/engagements/${engagementId}/milestones`, payload);

@@ -9,10 +9,26 @@ const success = ref('');
 
 const userId = computed(() => Number(route.params.id));
 
-function authHeaders() {
-  return {
-    Authorization: `Bearer ${localStorage.getItem('token')}`,
-  };
+function authHeaders(): HeadersInit {
+  const headers = new Headers();
+
+  if (!import.meta.client) {
+    return headers;
+  }
+
+  const rawUser = localStorage.getItem('auth_user');
+  const parsedUser = rawUser ? JSON.parse(rawUser) : null;
+
+  const token =
+    localStorage.getItem('auth_token') ||
+    parsedUser?.token ||
+    localStorage.getItem('token');
+
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  return headers;
 }
 
 async function refresh() {

@@ -2,6 +2,12 @@
 <script setup lang="ts">
 import { useApi } from '~/composables/useApi';
 
+interface ClientPortalSummary {
+  active_projects: number;
+  open_invoices: number;
+  contracts: number;
+}
+
 definePageMeta({
   middleware: ['role'],
   roles: ['client'],
@@ -12,7 +18,9 @@ const { apiFetch } = useApi();
 const { data: summary, pending } = await useAsyncData(
   'client-portal-summary',
   () => {
-    return apiFetch('/api/client-portal/summary');
+    return apiFetch<ClientPortalSummary>(
+      '/api/client-portal/summary',
+    );
   },
 );
 </script>

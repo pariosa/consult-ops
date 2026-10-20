@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { usePlatformAdmin } from '~/composables/usePlatformAdmin';
 import { usePermissions } from '~/composables/usePermissions';
+import { useAuth } from '~/composables/useAuth';
+
 
 const {
   getOrganizations,
@@ -10,20 +12,21 @@ const {
   getOrganizationMembers,
   assignUserToOrganization,
 } = usePlatformAdmin();
-import { useAuth } from '~/composables/useAuth';
-import role from '~/middleware/role';
-
+ 
 const { authUser } = useAuth();
 
 const isSuperAdmin = computed(() => {
-  if (!process.client) return false;
+  if (!import.meta.client) return false;
 
   const raw = localStorage.getItem('auth:user');
   const localUser = raw ? JSON.parse(raw) : null;
 
+  const user = authUser.value;
+
   return (
-    role.value === 'super_admin' ||
-    role.value === 'platform' ||
+    user?.user_type === 'super_admin' ||
+    user?.role === 'super_admin' ||
+    user?.role === 'platform' ||
     localUser?.user_type === 'super_admin' ||
     localUser?.role === 'super_admin' ||
     localUser?.portal === 'platform'
