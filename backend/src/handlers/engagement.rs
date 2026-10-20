@@ -380,6 +380,14 @@ pub async fn apply_engagement_lifecycle_event(
     engagement_id: i64,
     event: EngagementEvent,
 ) -> HttpResponse {
+    // Payment confirmation must come through the
+    // verified billing/activation workflow.
+    if event == EngagementEvent::PaymentReceived {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "error": "PaymentReceived cannot be applied directly."
+        }));
+    }
+
     let organization_id = match organization_id_for_engagement(&db, engagement_id).await {
         Ok(id) => id,
         Err(_) => {
@@ -683,31 +691,46 @@ pub async fn activate_engagement(
 ) -> impl Responder {
     let engagement_id = path.into_inner();
 
-    let response = apply_engagement_lifecycle_event(
-        db.clone(),
-        auth,
-        engagement_id,
-        EngagementEvent::PaymentReceived,
-    )
-    .await;
-
-    if response.status().is_success() {
-        if let Ok(Some(client_email)) =
-            NotificationRecipientService::engagement_client_email(db.pool.as_ref(), engagement_id)
-                .await
-        {
-            if let Err(err) = EmailNotificationService::billing_paid(
-                client_email,
-                format!("engagement {}", engagement_id),
-            )
-            .await
-            {
-                eprintln!("activation email error: {:?}", err);
-            }
+    let organization_id = match organization_id_for_engagement(&db, engagement_id).await {
+        Ok(id) => id,
+        Err(_) => {
+            return HttpResponse::NotFound().json(serde_json::json!({
+                "error": "Engagement not found"
+            }));
         }
+    };
+
+    if let Err(err) = require_org_role(
+        db.pool.as_ref(),
+        auth.id,
+        organization_id,
+        &["owner", "admin"],
+    )
+    .await
+    {
+        return err.error_response();
     }
 
-    response
+    match maybe_activate_engagement(db.get_ref(), engagement_id, organization_id, Some(auth.id))
+        .await
+    {
+        Ok(true) => HttpResponse::Ok().json(serde_json::json!({
+            "status": "active",
+            "engagement_id": engagement_id
+        })),
+
+        Ok(false) => HttpResponse::Conflict().json(serde_json::json!({
+            "error": "Engagement is already active or activation prerequisites are unmet."
+        })),
+
+        Err(err) => {
+            eprintln!("activate_engagement error: {}", err);
+
+            HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to activate engagement."
+            }))
+        }
+    }
 }
 
 pub async fn complete_engagement(

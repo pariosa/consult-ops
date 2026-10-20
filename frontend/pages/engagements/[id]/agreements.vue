@@ -7,8 +7,12 @@ import DashboardShell from '~/components/DashboardShell.vue';
 import AgreementPaymentSetup from '~/components/Agreements/AgreementPaymentSetup.vue';
 
 import { useApi } from '~/composables/useApi';
-import { usePermissions } from '~/composables/usePermissions';
 import { useAgreements } from '~/composables/useAgreements';
+import {
+  useOrganizationOnboarding,
+  type MyOrganization,
+} from '~/composables/useOrganizationOnboarding';
+
 
 const route = useRoute();
 const router = useRouter();
@@ -24,7 +28,11 @@ const {
   createPayoutRule: createPayoutRuleRequest,
 } = useAgreements();
 
-const { canManageAgreements } = usePermissions();
+
+
+const { getMyOrganizations } = useOrganizationOnboarding();
+
+const myOrganizations = ref<MyOrganization[]>([]);
 
 const loading = ref(true);
 const saving = ref(false);
@@ -68,6 +76,7 @@ const selectedAgreement = computed(() =>
   ),
 );
 
+
 const agreementLocked = computed(
   () => selectedAgreement.value?.status === 'locked',
 );
@@ -100,7 +109,7 @@ const contractorPayeeParties = computed(() =>
 
 const canAddPayoutRule = computed(() => {
   return (
-    canManageAgreements.value &&
+    canManageCurrentAgreement.value &&
     selectedAgreementId.value &&
     !agreementLocked.value &&
     !hasPayoutRule.value &&
@@ -109,6 +118,19 @@ const canAddPayoutRule = computed(() => {
     payoutRuleForm.value.to_party_id
   );
 });
+
+const canManageCurrentAgreement = computed(() => {
+  const membership = myOrganizations.value.find(
+    (organization) =>
+      organization.organization_id === organizationId.value &&
+      organization.status === 'active',
+  );
+
+  return ['owner', 'admin'].includes(membership?.role ?? '');
+});
+
+const resolvedClientId = ref<number | null>(null);
+
 
 function partyLabel(partyId: number) {
   const party = parties.value.find((item) => item.id === partyId);
@@ -148,12 +170,6 @@ function hydrateSelectedPartiesFromExistingRules() {
 
   payoutRuleForm.value.to_party_id =
     payoutRuleForm.value.to_party_id || Number(firstRule.to_party_id);
-
-  paymentReadiness.value = {
-    payerReady: true,
-    payeeReady: true,
-    allReady: true,
-  };
 }
 
 function updatePaymentReadiness(payload: any) {
@@ -205,14 +221,24 @@ async function refresh() {
 
     organizationId.value = orgId;
 
+    myOrganizations.value = await getMyOrganizations();
+
+    const project = await api.get<{
+      id: number;
+      organization_id: number;
+      client_id: number;
+    }>(`/api/projects/${engagement.value.project_id}`);
+
+    if (Number(project.organization_id) !== Number(engagement.value.organization_id)) {
+      throw new Error('Project and engagement belong to different organizations.');
+    }
+
+    resolvedClientId.value = Number(project.client_id);
     parties.value = await api.get<any[]>(
       `/api/organizations/${orgId}/parties`,
     );
 
     agreements.value = await listOrganizationAgreements(orgId);
-    if (organizationId.value == null) {
-      throw new Error('Engagement has no associated organization.');
-    }
 
     const engagementAgreements = agreements.value.filter(
       (agreement: any) => agreement.engagement_id === engagementId,
@@ -238,8 +264,8 @@ async function refresh() {
 }
 
 async function createVerifiedClientParty() {
-  if (!organizationId.value || !engagement.value?.client_id) {
-    error.value = 'No client linked to engagement.';
+  if (!organizationId.value || !resolvedClientId.value) {
+    error.value = 'No client linked to this project.';
     return;
   }
 
@@ -248,7 +274,7 @@ async function createVerifiedClientParty() {
 
   try {
     await api.post(
-      `/api/organizations/${organizationId.value}/parties/from-client/${engagement.value.client_id}`,
+      `/api/organizations/${organizationId.value}/parties/from-client/${resolvedClientId.value}`,
       {},
     );
 
@@ -262,6 +288,7 @@ async function createVerifiedClientParty() {
     saving.value = false;
   }
 }
+
 
 async function createVerifiedUserParty() {
   if (!organizationId.value || !engagement.value?.contractor_user_id) {
@@ -284,6 +311,52 @@ async function createVerifiedUserParty() {
       err?.data?.error ||
       err?.message ||
       'Failed to create verified contractor party.';
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function createExternalContractorParty() {
+  if (!organizationId.value || !engagement.value?.contractor_email) {
+    error.value = 'This engagement has no contractor email.';
+    return;
+  }
+
+  saving.value = true;
+  error.value = '';
+
+  try {
+    const contractorEmail = engagement.value.contractor_email.trim().toLowerCase();
+
+    const existing = parties.value.find(
+      (party) =>
+        party.party_type === 'contractor' &&
+        party.email?.trim().toLowerCase() === contractorEmail,
+    );
+
+    if (existing) {
+      preparePayee(existing.id);
+      return;
+    }
+
+    const created = await api.post<{ id: number }>(
+      `/api/organizations/${organizationId.value}/parties`,
+      {
+        name: engagement.value.contractor_name,
+        email: contractorEmail,
+        party_type: 'contractor',
+      },
+    );
+
+    await refresh();
+    preparePayee(created.id);
+
+    success.value = 'Contractor registered. Verification is still required.';
+  } catch (err: any) {
+    error.value =
+      err?.data?.error ||
+      err?.message ||
+      'Failed to create contractor party.';
   } finally {
     saving.value = false;
   }
@@ -420,7 +493,7 @@ onMounted(refresh);
       </section>
 
       <AgreementPaymentSetup
-        v-if="canManageAgreements"
+        v-if="canManageCurrentAgreement"
         :parties="parties"
         :trigger-event="payoutRuleForm.trigger_event"
         :percent="Number(payoutRuleForm.percent || 0)"
@@ -451,7 +524,7 @@ onMounted(refresh);
         </div>
 
         <button
-          v-if="canManageAgreements && selectedAgreement && !agreementLocked"
+          v-if="canManageCurrentAgreement && selectedAgreement && !agreementLocked"
           class="form-button"
           :disabled="saving || !hasPayoutRule"
           @click="lockAgreement"
@@ -472,7 +545,7 @@ onMounted(refresh);
           </select>
 
           <button
-            v-if="canManageAgreements"
+            v-if="canManageCurrentAgreement"
             class="form-button"
             :disabled="saving"
             @click="createAgreement"
@@ -601,7 +674,7 @@ onMounted(refresh);
           </select>
 
           <button
-            v-if="canManageAgreements"
+            v-if="canManageCurrentAgreement"
             class="form-button"
             :disabled="saving || !canAddPayoutRule"
             @click="createPayoutRule"
@@ -610,7 +683,7 @@ onMounted(refresh);
           </button>
 
           <div
-            v-if="canManageAgreements && !paymentReadiness.allReady"
+            v-if="canManageCurrentAgreement && !paymentReadiness.allReady"
             class="form-error"
           >
             Payment setup is incomplete. Verify payer funding and payee payout
@@ -619,7 +692,7 @@ onMounted(refresh);
         </div>
       </section>
 
-      <section v-if="canManageAgreements" class="portal-section">
+      <section v-if="canManageCurrentAgreement" class="portal-section">
         <p class="eyebrow">Verified Parties</p>
         <h2>Assign Verified Parties</h2>
 
@@ -633,10 +706,10 @@ onMounted(refresh);
 
           <button
             class="form-button secondary"
-            :disabled="!engagement?.contractor_user_id"
-            @click="createVerifiedUserParty"
+            :disabled="saving || !engagement?.contractor_email"
+            @click="createExternalContractorParty"
           >
-            Create Verified Contractor Party
+            {{ saving ? 'Creating...' : 'Register Contractor / Payee' }}
           </button>
         </div>
       </section>

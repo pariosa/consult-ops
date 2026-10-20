@@ -5,6 +5,7 @@ use crate::models::engagement_billing::{
     CreateEngagementBillingRequest, EngagementBilling, UpdateCheckoutSessionRequest,
 };
 use crate::services::authz::{require_org_member, require_org_role};
+use crate::services::engagement_activation_service::maybe_activate_engagement;
 use crate::services::event_service::EventService;
 use crate::services::notification_email_recipient_service::NotificationRecipientService;
 use crate::services::notification_service::NotificationService;
@@ -17,80 +18,11 @@ pub async fn activate_engagement_from_payment(
     engagement_id: i64,
     organization_id: i64,
 ) -> Result<(), String> {
-    let current_status = sqlx::query_scalar::<_, String>(
-        r#"
-        SELECT status
-        FROM engagements
-        WHERE id = $1
-          AND organization_id = $2
-        "#,
-    )
-    .bind(engagement_id)
-    .bind(organization_id)
-    .fetch_one(db.pool.as_ref())
-    .await
-    .map_err(|err| err.to_string())?;
-
-    // Payment is valid, but draft engagements are not activatable yet.
-    // This is not an error. It just means agreement setup is still required.
-    if current_status == "draft" {
-        eprintln!(
-            "Activation payment received for draft engagement {}; leaving engagement in draft.",
-            engagement_id
-        );
-
-        return Ok(());
-    }
-
-    // Only auto-activate from statuses that are actually ready.
-    let allowed_statuses = ["contract_signed", "signed", "ready_for_activation"];
-
-    if !allowed_statuses.contains(&current_status.as_str()) {
-        eprintln!(
-            "Activation payment received for engagement {} in status {}; not auto-activating.",
-            engagement_id, current_status
-        );
-
-        return Ok(());
-    }
-
-    let now = chrono::Utc::now().to_rfc3339();
-
-    sqlx::query(
-        r#"
-        UPDATE engagements
-        SET status = 'activated',
-            platform_fee_status = 'paid',
-            updated_at = $1
-        WHERE id = $2
-          AND organization_id = $3
-        "#,
-    )
-    .bind(&now)
-    .bind(engagement_id)
-    .bind(organization_id)
-    .execute(db.pool.as_ref())
-    .await
-    .map_err(|err| err.to_string())?;
-
-    crate::services::event_service::EventService::record_event(
-        db.pool.as_ref(),
-        organization_id,
-        None,
-        "engagement",
-        engagement_id,
-        "EngagementActivated",
-        Some(&current_status),
-        Some("activated"),
-        serde_json::json!({
-            "trigger": "activation_payment"
-        }),
-    )
-    .await
-    .map_err(|err| err.to_string())?;
+    maybe_activate_engagement(db, engagement_id, organization_id, None).await?;
 
     Ok(())
 }
+
 async fn organization_id_for_engagement(db: &Db, engagement_id: i64) -> Result<i64, sqlx::Error> {
     sqlx::query_scalar::<_, i64>(
         r#"
@@ -348,6 +280,22 @@ pub async fn mark_billing_paid(
     auth: AuthUser,
     path: web::Path<i64>,
 ) -> impl Responder {
+    // This endpoint simulates a payment.
+    // It must never be available in production.
+    let simulation_enabled = cfg!(debug_assertions)
+        && std::env::var("APP_ENV").ok().as_deref() == Some("local")
+        && std::env::var("ENABLE_DEV_PAYMENT_SIMULATION")
+            .ok()
+            .as_deref()
+            == Some("true");
+
+    if !simulation_enabled {
+        return HttpResponse::NotFound().finish();
+    }
+
+    if !cfg!(debug_assertions) {
+        return HttpResponse::NotFound().finish();
+    }
     let billing_id = path.into_inner();
     let organization_id = match organization_id_for_billing(&db, billing_id).await {
         Ok(id) => id,
@@ -399,6 +347,7 @@ pub async fn mark_billing_paid(
         }
     }
 }
+
 pub async fn create_activation_checkout(
     db: web::Data<Db>,
     auth: AuthUser,

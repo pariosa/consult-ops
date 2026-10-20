@@ -34,9 +34,9 @@ use crate::handlers::{
     mark_subscription_active_dev, mark_transaction_failed, mark_transaction_paid,
     mark_transaction_processing, platform_search, reject_organization_join_request,
     reopen_engagement_milestone, request_to_join_organization, resend_contract,
-    revoke_user_sessions, set_current_organization, show, stripe_webhook,
-    submit_engagement_milestone, update_contract_recipient, update_engagement_milestone,
-    update_organization, update_organization_member, update_user_type,
+    revoke_user_sessions, set_current_organization, show, simulate_transaction_settlement,
+    stripe_webhook, submit_engagement_milestone, update_contract_recipient,
+    update_engagement_milestone, update_organization, update_organization_member, update_user_type,
     upsert_organization_subscription, upsert_party_payment_profile, verify_party,
 };
 use actix_web::web;
@@ -356,6 +356,10 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route(
                 "/operational-transactions/{id}/mark-paid",
                 web::post().to(mark_transaction_paid),
+            )
+            .route(
+                "/operational-transactions/{id}/simulate-settlement",
+                web::post().to(simulate_transaction_settlement),
             )
             .route(
                 "/operational-transactions/{id}/mark-failed",

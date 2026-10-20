@@ -42,12 +42,6 @@ pub async fn list_engagement_transactions(
 ) -> impl Responder {
     let engagement_id = path.into_inner();
 
-    if !can_process_transactions(&auth.user_type) {
-        return HttpResponse::Forbidden().json(serde_json::json!({
-            "error": "You do not have permission to view engagement transactions."
-        }));
-    }
-
     let organization_id = match organization_id_for_engagement(&db, engagement_id).await {
         Ok(id) => id,
         Err(_) => return HttpResponse::NotFound().body("Engagement not found"),
@@ -130,9 +124,16 @@ async fn apply_transaction_status(
             .await
         {
             Ok(transaction) => transaction,
+
+            Err(sqlx::Error::RowNotFound) => {
+                return HttpResponse::Conflict().json(serde_json::json!({
+                    "error": "Invalid transaction status transition."
+                }));
+            }
+
             Err(err) => {
                 eprintln!("update transaction status error: {:?}", err);
-                return HttpResponse::InternalServerError().body(err.to_string());
+                return HttpResponse::InternalServerError().finish();
             }
         };
 
@@ -236,12 +237,6 @@ pub async fn mark_transaction_processing(
     auth: AuthUser,
     path: web::Path<i64>,
 ) -> impl Responder {
-    if !can_process_transactions(&auth.user_type) {
-        return HttpResponse::Forbidden().json(serde_json::json!({
-            "error": "You do not have permission to process transactions."
-        }));
-    }
-
     apply_transaction_status(
         db,
         auth,
@@ -299,12 +294,6 @@ pub async fn cancel_transaction(
     auth: AuthUser,
     path: web::Path<i64>,
 ) -> impl Responder {
-    if !can_manage_transactions(&auth.user_type) {
-        return HttpResponse::Forbidden().json(serde_json::json!({
-            "error": "You do not have permission to cancel transactions."
-        }));
-    }
-
     apply_transaction_status(
         db,
         auth,
@@ -313,4 +302,60 @@ pub async fn cancel_transaction(
         "OperationalTransactionCancelled",
     )
     .await
+}
+
+pub async fn simulate_transaction_settlement(
+    db: web::Data<Db>,
+    auth: AuthUser,
+    path: web::Path<i64>,
+) -> impl Responder {
+    let simulation_enabled = cfg!(debug_assertions)
+        && std::env::var("APP_ENV").ok().as_deref() == Some("local")
+        && std::env::var("ENABLE_DEV_PAYMENT_SIMULATION")
+            .ok()
+            .as_deref()
+            == Some("true");
+
+    if !simulation_enabled {
+        return HttpResponse::NotFound().finish();
+    }
+
+    let transaction_id = path.into_inner();
+
+    let organization_id = match organization_id_for_transaction(&db, transaction_id).await {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::NotFound().finish(),
+    };
+
+    if let Err(err) = require_org_role(
+        db.pool.as_ref(),
+        auth.id,
+        organization_id,
+        &["owner", "admin"],
+    )
+    .await
+    {
+        return err.error_response();
+    }
+
+    let updated =
+        match OperationalTransaction::update_status(db.pool.as_ref(), transaction_id, "paid").await
+        {
+            Ok(transaction) => transaction,
+            Err(sqlx::Error::RowNotFound) => {
+                return HttpResponse::Conflict().json(serde_json::json!({
+                    "error": "Transaction must be processing before simulated settlement."
+                }));
+            }
+            Err(err) => {
+                eprintln!("simulated settlement error: {:?}", err);
+                return HttpResponse::InternalServerError().finish();
+            }
+        };
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "transaction": updated,
+        "simulated": true,
+        "message": "Local test only. No money was transferred."
+    }))
 }

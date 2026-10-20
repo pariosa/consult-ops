@@ -33,7 +33,7 @@ export function getEngagementNextAction(engagement: any): EngagementNextAction {
       description:
         'The engagement exists, but it is not yet ready for client commitment. Finalize scope, deliverables, and agreement details before sending it forward.',
       primaryLabel: 'Generate Agreement',
-      primaryTo: `/engagements/${engagement.id}/software-contract`,
+      primaryTo: `/engagements/${engagement.id}/agreements`,
       secondaryLabel: 'Edit Engagement',
       secondaryTo: `/engagements/${engagement.id}`,
     };

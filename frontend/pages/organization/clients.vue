@@ -1,14 +1,34 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted, ref} from 'vue';
 import { useOrganizationClients } from '~/composables/useOrganizationClients';
 
+ 
+import { useOrganizationOnboarding } from '~/composables/useOrganizationOnboarding';
 const {
   getOrganizationClients,
   createOrganizationClient,
   createVerifiedClientParty,
 } = useOrganizationClients();
 
-const organizationId = 1;
+const { getMyOrganizations } = useOrganizationOnboarding();
+const organizationId = ref<number | null>(null);
+
+async function ensureOrganizationId(): Promise<number> {
+  if (organizationId.value !== null) {
+    return organizationId.value;
+  }
+
+  const organizations = await getMyOrganizations();
+  const current = organizations.find((org) => org.is_current);
+
+  if (!current) {
+    throw new Error('No current organization selected.');
+  }
+
+  organizationId.value = current.organization_id;
+  return current.organization_id;
+}
+
 const clients = ref<any[]>([]);
 const loading = ref(false);
 const saving = ref(false);
@@ -27,9 +47,13 @@ async function refresh() {
   error.value = '';
 
   try {
-    clients.value = await getOrganizationClients(organizationId);
+    const orgId = await ensureOrganizationId();
+    clients.value = await getOrganizationClients(orgId);
   } catch (err: any) {
-    error.value = err?.message || 'Failed to load clients.';
+    error.value =
+      err?.data?.error ||
+      err?.message ||
+      'Failed to load clients.';
   } finally {
     loading.value = false;
   }
@@ -41,12 +65,15 @@ async function submitClient() {
   success.value = '';
 
   try {
-    await createOrganizationClient(organizationId, {
+   await createOrganizationClient(
+    await ensureOrganizationId(),
+    {
       name: form.value.name,
       email: form.value.email,
       company: form.value.company || undefined,
       phone: form.value.phone || undefined,
-    });
+    },
+  );
 
     success.value = 'Client created.';
     form.value = {
@@ -70,7 +97,10 @@ async function verifyClientParty(clientId: number) {
   success.value = '';
 
   try {
-    await createVerifiedClientParty(organizationId, clientId);
+    await createVerifiedClientParty(
+      await ensureOrganizationId(),
+      clientId,
+    );
     success.value = 'Verified client party created.';
     await refresh();
   } catch (err: any) {
